@@ -85,7 +85,10 @@ export const ALL_CATEGORY = "all";
 export const OTHER_CATEGORY = "other";
 
 export const ALL_LABEL: Record<Lang, string> = { en: "All", zh: "全部" };
-export const OTHER_LABEL: Record<Lang, string> = { en: "Other", zh: "其他" };
+export const OTHER_LABEL: Record<Lang, string> = {
+  en: "Uncategorized",
+  zh: "未分类",
+};
 
 /** Resolve the representative category id for a plugin. */
 export function categorize(item: PluginItem): string {

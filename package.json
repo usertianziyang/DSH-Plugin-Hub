@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "sync": "tsx scripts/sync-github.ts",
-    "test": "tsx --test tests/sync-github.test.ts tests/search.test.ts tests/categories.test.ts tests/react.test.ts",
+    "test": "tsx --test tests/sync-github.test.ts tests/search.test.ts tests/categories.test.ts tests/top-plugins.test.ts tests/react.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview"

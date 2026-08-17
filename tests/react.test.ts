@@ -88,6 +88,18 @@ const EXAMPLE_ITEM = {
   pushed_at: "2026-08-16T00:00:00Z",
 };
 
+function rankedItem(id: number, stars: number): Snapshot["items"][number] {
+  return {
+    ...EXAMPLE_ITEM,
+    id,
+    name: `plugin-${id}`,
+    full_name: `owner/plugin-${id}`,
+    owner_avatar_url: `https://avatars.githubusercontent.com/u/${id}?v=4`,
+    url: `https://github.com/owner/plugin-${id}`,
+    stars,
+  };
+}
+
 before(async () => {
   installDom();
   const rtl = await import("@testing-library/react");
@@ -125,6 +137,44 @@ test("renders an accessible data-source link and repository cards on success", a
 
   assert.ok(screen.getByLabelText("100 stars"));
   assert.ok(screen.getByText("Example DSH plugin."));
+});
+
+test("renders only the ten highest-starred repositories", async () => {
+  const items = [4, 12, 8, 11, 1, 9, 6, 2, 10, 7, 5, 3].map((stars, index) =>
+    rankedItem(index + 1, stars),
+  );
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(snapshot(items)), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+
+  render(createElement(App));
+
+  const cards = await screen.findAllByRole("article");
+  assert.equal(cards.length, 10);
+  assert.match(cards[0]?.textContent ?? "", /owner\/plugin-2/);
+  assert.equal(
+    screen.queryByRole("link", { name: /owner\/plugin-5 on GitHub/i }),
+    null,
+  );
+  assert.equal(
+    screen.queryByRole("link", { name: /owner\/plugin-8 on GitHub/i }),
+    null,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /^Explore$/i }));
+  assert.equal(screen.getAllByRole("article").length, 12);
+
+  fireEvent.click(
+    screen.getByRole("button", { name: /Other.*show all categories/i }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Uncategorized/i }));
+
+  assert.equal(screen.getAllByRole("article").length, 12);
+  assert.ok(
+    screen.getByRole("link", { name: /owner\/plugin-5 on GitHub/i }),
+  );
 });
 
 test("distinguishes the error state from a successful load", async () => {
@@ -165,7 +215,7 @@ test("shows a loading state before the snapshot resolves", async () => {
   await screen.findByText(/No data yet/i);
 });
 
-test("renders category navigation with an active All chip", async () => {
+test("shows the full-index category navigation in Explore", async () => {
   globalThis.fetch = (async () =>
     new Response(JSON.stringify(snapshot([EXAMPLE_ITEM])), {
       status: 200,
@@ -174,10 +224,20 @@ test("renders category navigation with an active All chip", async () => {
 
   render(createElement(App));
 
-  const allChip = await screen.findByRole("button", { name: /All/i });
+  await screen.findByText(/Explore open-source plugins/i);
+  assert.equal(
+    screen.getByRole("button", { name: /^Top 10$/i }).getAttribute("aria-pressed"),
+    "true",
+  );
+  fireEvent.click(screen.getByRole("button", { name: /^Explore$/i }));
+
+  const allChip = screen.getByRole("button", { name: /^All 1$/i });
   assert.equal(allChip.getAttribute("aria-pressed"), "true");
-  // EXAMPLE_ITEM only has the dsh-plugin topic, so it falls into "Other".
-  assert.ok(screen.getByRole("button", { name: /Other/i }));
+  assert.equal(screen.queryByText(/Explore open-source plugins/i), null);
+  // Less-used and empty category labels remain available through the overflow control.
+  const overflow = screen.getByRole("button", { name: /Other.*show all categories/i });
+  fireEvent.click(overflow);
+  assert.ok(screen.getByRole("button", { name: /Uncategorized/i }));
 });
 
 test("switches UI language between English and Chinese", async () => {

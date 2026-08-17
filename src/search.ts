@@ -51,7 +51,7 @@ export function indexItems(items: PluginItem[]): IndexedItem[] {
  * Filter indexed items by a query. Every keyword must be present in the
  * item's search text (AND). An empty query returns all items in order.
  */
-export function filterIndexed(indexed: IndexedItem[], query: string): IndexedItem[] {
+export function filterIndexed<T extends IndexedItem>(indexed: T[], query: string): T[] {
   const tokens = tokenize(query);
   if (tokens.length === 0) {
     return indexed;
