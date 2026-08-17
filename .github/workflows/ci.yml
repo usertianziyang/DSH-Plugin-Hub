@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Full data sync + checks + build every 6 hours.
+    - cron: "15 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Prevent overlapping full syncs (and builds) from interfering with each other.
+concurrency:
+  group: dsh-plugin-hub
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Real GitHub data sync runs only on schedule or manual dispatch, and is
+      # the only step that uses a token. Regular pushes/PRs stay offline.
+      - name: Sync data (schedule/manual only)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run sync
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-plugin-hub-dist
+          path: dist/
+          if-no-files-found: error

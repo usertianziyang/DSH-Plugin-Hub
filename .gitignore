@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# environment files (never commit real tokens)
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+
+# temporary sync files
+*.tmp
+public/.*.tmp
+
+# OS / editor
+.DS_Store
