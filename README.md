@@ -176,4 +176,4 @@ That is all. On the next scheduled (or manually dispatched) sync, the workflow w
 
 ## 🤝 CI
 
-`.github/workflows/ci.yml` runs offline tests, type-check, and build on every pull request and push, and additionally performs a full data sync on a 6-hour schedule and on manual dispatch (only those runs use `github.token`). A successful build uploads the standard `dist/` directory as a `dsh-plugin-hub-dist` artifact.
+`.github/workflows/ci.yml` runs offline tests, type-check, and build on every pull request and push. `.github/workflows/sync.yml` runs the full data sync on a 6-hour schedule and on manual dispatch, then commits the refreshed snapshot back to `main` with `contents: write`. A successful CI build uploads the standard `dist/` directory as a `dsh-plugin-hub-dist` artifact.

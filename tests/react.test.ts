@@ -1,4 +1,4 @@
-import { afterEach, before, test } from "node:test";
+import { afterEach, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { JSDOM } from "jsdom";
@@ -111,11 +111,19 @@ before(async () => {
   App = appModule.default;
 });
 
-afterEach(() => {
+function nextTurn(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+beforeEach(async () => {
+  window.history.replaceState(null, "", "/");
+  await nextTurn();
+  window.history.replaceState(null, "", "/");
+});
+
+afterEach(async () => {
   cleanup();
-  // The app mirrors its section/query into window.history via replaceState.
-  // Reset the URL between tests so each test starts from the default "top"
-  // section (the HeroSection tagline is only rendered there).
+  await nextTurn();
   window.history.replaceState(null, "", "/");
 });
 

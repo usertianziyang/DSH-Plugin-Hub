@@ -17,5 +17,8 @@ npm-debug.log*
 *.tmp
 public/.*.tmp
 
+# Stitch design exports
+.stitch/
+
 # OS / editor
 .DS_Store

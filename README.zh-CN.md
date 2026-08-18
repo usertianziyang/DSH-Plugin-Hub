@@ -176,4 +176,4 @@ VITE_BASE=/my-app/ npm run build
 
 ## 🤝 持续集成
 
-`.github/workflows/ci.yml` 在每次 PR 与 push 时运行离线测试、类型检查与构建，并额外在每 6 小时的定时任务与手动触发时执行一次完整数据同步（仅这些运行会用到 `github.token`）。构建成功后会以 `dsh-plugin-hub-dist` 为名将标准 `dist/` 目录作为构件上传。
+`.github/workflows/ci.yml` 在每次 PR 与 push 时运行离线测试、类型检查与构建；`.github/workflows/sync.yml` 则在每 6 小时的定时任务与手动触发时执行完整数据同步，并使用 `contents: write` 将刷新后的快照提交回 `main`。CI 构建成功后会以 `dsh-plugin-hub-dist` 为名将标准 `dist/` 目录作为构件上传。
