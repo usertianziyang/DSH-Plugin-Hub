@@ -29,6 +29,7 @@ export function CategoryFilter({
               aria-pressed={active}
               disabled={option.count === 0}
               onClick={() => onChange(option.id)}
+              aria-label={`${option.label} ${option.count}`}
             >
               <span>{option.label}</span>
               <span className="category-count">{option.count.toLocaleString()}</span>

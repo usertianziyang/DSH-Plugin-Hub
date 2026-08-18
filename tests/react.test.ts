@@ -113,6 +113,10 @@ before(async () => {
 
 afterEach(() => {
   cleanup();
+  // The app mirrors its section/query into window.history via replaceState.
+  // Reset the URL between tests so each test starts from the default "top"
+  // section (the HeroSection tagline is only rendered there).
+  window.history.replaceState(null, "", "/");
 });
 
 test("renders an accessible data-source link and repository cards on success", async () => {
@@ -127,6 +131,8 @@ test("renders an accessible data-source link and repository cards on success", a
   const sourceLink = await screen.findByRole("link", {
     name: /GitHub Topic dsh-plugin/i,
   });
+  const footer = screen.getByRole("contentinfo");
+  assert.equal(footer.querySelector("h2")?.id, "footer-title");
   assert.equal(sourceLink.getAttribute("href"), "https://github.com/topics/dsh-plugin");
   assert.equal(sourceLink.getAttribute("rel"), "noopener noreferrer");
 

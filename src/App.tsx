@@ -1,6 +1,7 @@
 import { AppHeader } from "./components/AppHeader";
 import { CategoryFilter } from "./components/CategoryFilter";
 import { HeroSection } from "./components/HeroSection";
+import { PixelLogoBackground } from "./components/PixelLogoBackground";
 import { ResultsPanel } from "./components/ResultsPanel";
 import { SearchDialog } from "./components/SearchDialog";
 import { SiteFooter } from "./components/SiteFooter";
@@ -13,6 +14,7 @@ export default function App(_props: AppProps) {
 
   return (
     <div className="app-shell">
+      <PixelLogoBackground />
       <AppHeader
         snapshot={explorer.snapshot}
         lang={explorer.lang}
@@ -57,6 +59,8 @@ export default function App(_props: AppProps) {
         <SearchDialog
           query={explorer.query}
           t={explorer.t}
+          results={explorer.filteredItems}
+          totalCount={explorer.totalCount}
           onQueryChange={explorer.setQuery}
           onClose={explorer.closeSearch}
         />

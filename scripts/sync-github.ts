@@ -722,6 +722,81 @@ export async function writeSnapshotAtomic(
 }
 
 // ---------------------------------------------------------------------------
+// Publication: commit the snapshot and (optionally) trigger a Vercel deploy.
+//
+// This project is a static site hosted on Vercel. Vercel's build filesystem is
+// read-only and its serverless functions are too short-lived for the recursive
+// sharded sync, so the sync itself always runs in GitHub Actions (a long-running
+// environment with `GITHUB_TOKEN`). After a successful sync, this step commits
+// the refreshed `public/plugins.json` back to the repository and then pings the
+// Vercel Deploy Hook, which triggers a fresh production deployment.
+// ---------------------------------------------------------------------------
+
+/** Report (via git) whether the snapshot actually changed on disk. */
+async function hasUncommittedChange(outputPath: string): Promise<boolean> {
+  const execFile = await import("node:child_process").then((m) => m.execFile);
+  return new Promise<boolean>((resolve) => {
+    execFile("git", ["status", "--porcelain", "--", outputPath], (error, stdout) => {
+      if (error) {
+        // git is unavailable (e.g. a non-CI checkout); assume a change to be safe.
+        resolve(true);
+        return;
+      }
+      resolve(stdout.trim().length > 0);
+    });
+  });
+}
+
+/** Stage and commit the refreshed snapshot using the Actions bot identity. */
+async function commitSnapshot(outputPath: string): Promise<void> {
+  const { execFile } = await import("node:child_process");
+  const run = (args: string[]): Promise<void> =>
+    new Promise((resolve, reject) => {
+      execFile("git", args, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+
+  await run(["config", "user.name", "github-actions[bot]"]);
+  await run(["config", "user.email", "github-actions[bot]@users.noreply.github.com"]);
+  await run(["add", outputPath]);
+  await run(["commit", "-m", "chore(data): refresh plugins.json from GitHub topic sync"]);
+}
+
+/** Trigger a Vercel production deployment via the Deploy Hook (if configured). */
+async function triggerVercelDeploy(): Promise<boolean> {
+  const hookUrl = process.env.VERCEL_DEPLOY_HOOK_URL?.trim() ?? "";
+  if (!hookUrl) {
+    console.log("[sync] VERCEL_DEPLOY_HOOK_URL not set; skipping Vercel deploy trigger.");
+    return false;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(hookUrl, {
+      method: "POST",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!response.ok) {
+      console.warn(
+        `[sync] Vercel deploy hook returned HTTP ${response.status}; ` +
+          `deployment may still have been queued.`,
+      );
+      return false;
+    }
+    console.log("[sync] Vercel deploy triggered via hook.");
+    return true;
+  } catch (error) {
+    clearTimeout(timeout);
+    console.warn(`[sync] Failed to trigger Vercel deploy: ${safeMessage(error)}`);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Entry point (guarded so tests can import pure functions without syncing).
 // ---------------------------------------------------------------------------
 
@@ -748,6 +823,18 @@ async function main(): Promise<void> {
     await writeSnapshotAtomic(outputPath, snapshot);
     const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
     console.log(`[sync] Done: ${snapshot.items.length} repos in ${elapsedSec}s -> ${outputPath}`);
+
+    // Publish only when running in CI (GitHub Actions), where git and the
+    // Actions bot identity are available. Local runs just refresh the file.
+    if (process.env.CI === "true" && process.env.GITHUB_ACTIONS === "true") {
+      if (await hasUncommittedChange(outputPath)) {
+        await commitSnapshot(outputPath);
+        console.log("[sync] Committed refreshed plugins.json.");
+      } else {
+        console.log("[sync] plugins.json unchanged; nothing to commit.");
+      }
+      await triggerVercelDeploy();
+    }
   } catch (error) {
     console.error(`[sync] FAILED: ${safeMessage(error)}`);
     process.exitCode = 1;

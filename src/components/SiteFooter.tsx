@@ -7,10 +7,10 @@ export interface SiteFooterProps {
 
 export function SiteFooter({ t }: SiteFooterProps) {
   return (
-    <footer className="site-footer">
+    <footer className="site-footer" aria-labelledby="footer-title">
       <div className="footer-shell">
         <div>
-          <strong>{t("footerTitle")}</strong>
+          <h2 id="footer-title">{t("footerTitle")}</h2>
           <p>
             {t("footerPrefix")}
             <a href={APP_LINKS.topic} target="_blank" rel="noopener noreferrer">dsh-plugin</a>

@@ -88,6 +88,8 @@ const messages = {
     expandCategories: "Other — show all categories",
     collapseCategories: "Collapse categories",
     langSwitchTo: "Switch to Chinese",
+    langZh: "CN",
+    langEn: "EN",
   },
   zh: {
     siteBadge: "社区索引",
@@ -172,6 +174,8 @@ const messages = {
     expandCategories: "其它，展开全部分类",
     collapseCategories: "收起分类",
     langSwitchTo: "Switch to English",
+    langZh: "中文",
+    langEn: "英文",
   },
 } as const;
 

@@ -229,6 +229,9 @@ export function usePluginExplorer(): PluginExplorerState {
     setSectionState(value);
     setCategoryState(ALL_CATEGORY);
     setQueryState("");
+    if (value === "explore") {
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    }
   }, []);
   const toggleLanguage = useCallback(() => {
     setLang((current) => {
