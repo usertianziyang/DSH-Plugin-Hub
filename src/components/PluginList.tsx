@@ -9,9 +9,9 @@ export interface PluginListProps {
 export function PluginList({ items, t }: PluginListProps) {
   return (
     <ol className="plugin-list">
-      {items.map(({ item, rank }) => (
+      {items.map(({ item }) => (
         <li key={item.id}>
-          <PluginCard item={item} rank={rank} t={t} />
+          <PluginCard item={item} t={t} />
         </li>
       ))}
     </ol>

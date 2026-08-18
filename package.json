@@ -1,13 +1,13 @@
 {
   "name": "dsh-plugin-hub",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "A searchable index of public GitHub repositories tagged with dsh-plugin, ranked by stars.",
   "scripts": {
     "dev": "vite",
     "sync": "tsx scripts/sync-github.ts",
-    "test": "tsx --test tests/sync-github.test.ts tests/search.test.ts tests/categories.test.ts tests/top-plugins.test.ts tests/react.test.ts",
+    "test": "tsx --test tests/sync-github.test.ts tests/search.test.ts tests/categories.test.ts tests/top-plugins.test.ts tests/filter-plugins.test.ts tests/featured-plugins.test.ts tests/react.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview"

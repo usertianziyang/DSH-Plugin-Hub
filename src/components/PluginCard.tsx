@@ -1,19 +1,20 @@
+import type { ReactNode } from "react";
 import type { PluginItem } from "../types";
 import type { Translate } from "../ui-types";
 
 export interface PluginCardProps {
   readonly item: PluginItem;
-  readonly rank: number;
   readonly t: Translate;
+  readonly footer?: ReactNode;
 }
 
 function languageClass(language: string | null): string {
   return `language-dot language-${(language ?? "other").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 }
 
-export function PluginCard({ item, rank, t }: PluginCardProps) {
+export function PluginCard({ item, t, footer }: PluginCardProps) {
   return (
-    <article className="plugin-card" aria-label={`${t("rankLabel", { rank })}: ${item.full_name}`}>
+    <article className="plugin-card" aria-label={item.full_name}>
       <div className="plugin-avatar-wrap">
         <img
           className="plugin-avatar"
@@ -23,7 +24,6 @@ export function PluginCard({ item, rank, t }: PluginCardProps) {
           width={48}
           height={48}
         />
-        <span className="rank-badge" aria-hidden="true">#{rank}</span>
       </div>
 
       <div className="plugin-content">
@@ -65,6 +65,8 @@ export function PluginCard({ item, rank, t }: PluginCardProps) {
             {item.topics.slice(0, 6).map((topic) => <li key={topic}>{topic}</li>)}
           </ul>
         ) : null}
+
+        {footer}
       </div>
     </article>
   );

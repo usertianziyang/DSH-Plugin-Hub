@@ -133,9 +133,9 @@ export function SearchDialog({
             </div>
           ) : (
             <ol className="plugin-list search-plugin-list">
-              {visibleResults.map(({ item, rank }) => (
+              {visibleResults.map(({ item }) => (
                 <li key={item.id}>
-                  <PluginCard item={item} rank={rank} t={t} />
+                  <PluginCard item={item} t={t} />
                 </li>
               ))}
             </ol>

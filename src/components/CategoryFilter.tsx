@@ -6,6 +6,8 @@ export interface CategoryFilterProps {
   readonly activeCategory: string;
   readonly t: Translate;
   readonly onChange: (category: string) => void;
+  readonly shellClassName?: string;
+  readonly ariaLabel?: string;
 }
 
 export function CategoryFilter({
@@ -13,12 +15,21 @@ export function CategoryFilter({
   activeCategory,
   t,
   onChange,
+  shellClassName,
+  ariaLabel,
 }: CategoryFilterProps) {
   const overflow = useCategoryOverflow(options);
+  const shellClass = [
+    "category-filter-shell",
+    shellClassName,
+    overflow.expanded ? "is-expanded" : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div className={`category-filter-shell${overflow.expanded ? " is-expanded" : ""}`}>
-      <nav className="category-filter" aria-label={t("categoriesLabel")}>
+    <div className={shellClass}>
+      <nav className="category-filter" aria-label={ariaLabel ?? t("categoriesLabel")}>
         {overflow.visibleOptions.map((option) => {
           const active = option.id === activeCategory;
           return (

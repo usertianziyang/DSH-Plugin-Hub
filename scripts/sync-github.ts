@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { filterLowValueRepos } from "../src/filter-plugins";
 import type { PluginItem, Snapshot } from "../src/types";
 
 const API_BASE_URL = "https://api.github.com";
@@ -651,8 +652,17 @@ export async function runSync(deps: SyncDeps): Promise<Snapshot> {
 
   const collected = await collectAllRepos(client, startDate, endDate);
   const deduped = dedupeById(collected);
-  const sorted = sortItems(deduped);
-  deps.log?.(`Collected ${sorted.length} unique repos (${collected.length} raw).`);
+  deps.log?.(`Collected ${deduped.length} unique repos (${collected.length} raw).`);
+
+  // 剔除仅蹭热度、缺乏实用价值的仓库（已归档 / fork / 无描述 / 无许可证 /
+  // 合集榜单类营销描述），过滤后再排序与计算排行。
+  const filtered = filterLowValueRepos(deduped);
+  deps.log?.(
+    `Filtered ${filtered.stats.removed}/${filtered.stats.total} low-value repos ` +
+      `(reasons: ${JSON.stringify(filtered.stats.reasons)}).`,
+  );
+
+  const sorted = sortItems(filtered.kept);
 
   const after = await rootTotalCount(client, startDate, endDate);
   deps.log?.(`Root total_count (after): ${after}`);

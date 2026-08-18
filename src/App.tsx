@@ -1,5 +1,6 @@
 import { AppHeader } from "./components/AppHeader";
 import { CategoryFilter } from "./components/CategoryFilter";
+import { FeaturedPlugins } from "./components/FeaturedPlugins";
 import { HeroSection } from "./components/HeroSection";
 import { PixelLogoBackground } from "./components/PixelLogoBackground";
 import { ResultsPanel } from "./components/ResultsPanel";
@@ -27,30 +28,36 @@ export default function App(_props: AppProps) {
       />
 
       <main className="main-content">
-        {explorer.viewMode === "top" ? (
-          <HeroSection snapshot={explorer.snapshot} lang={explorer.lang} t={explorer.t} />
-        ) : null}
+        {explorer.viewMode === "featured" ? (
+          <FeaturedPlugins items={explorer.snapshot?.items ?? []} t={explorer.t} />
+        ) : (
+          <>
+            {explorer.viewMode === "top" ? (
+              <HeroSection snapshot={explorer.snapshot} lang={explorer.lang} t={explorer.t} />
+            ) : null}
 
-        {explorer.state.status === "success" && explorer.viewMode !== "top" ? (
-          <CategoryFilter
-            options={explorer.categoryOptions}
-            activeCategory={explorer.category}
-            t={explorer.t}
-            onChange={explorer.setCategory}
-          />
-        ) : null}
+            {explorer.state.status === "success" && explorer.viewMode !== "top" ? (
+              <CategoryFilter
+                options={explorer.categoryOptions}
+                activeCategory={explorer.category}
+                t={explorer.t}
+                onChange={explorer.setCategory}
+              />
+            ) : null}
 
-        <ResultsPanel
-          state={explorer.state}
-          items={explorer.filteredItems}
-          query={explorer.query}
-          topCount={explorer.topCount}
-          totalCount={explorer.totalCount}
-          limit={explorer.limit}
-          viewMode={explorer.viewMode}
-          activeCategoryLabel={explorer.activeCategoryLabel}
-          t={explorer.t}
-        />
+            <ResultsPanel
+              state={explorer.state}
+              items={explorer.filteredItems}
+              query={explorer.query}
+              topCount={explorer.topCount}
+              totalCount={explorer.totalCount}
+              limit={explorer.limit}
+              viewMode={explorer.viewMode}
+              activeCategoryLabel={explorer.activeCategoryLabel}
+              t={explorer.t}
+            />
+          </>
+        )}
       </main>
 
       <SiteFooter t={explorer.t} />

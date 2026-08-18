@@ -23,7 +23,7 @@ export type AsyncState =
   | { readonly status: "success"; readonly snapshot: Snapshot }
   | { readonly status: "error"; readonly message: string };
 
-export type ExplorerSection = "top" | "explore";
+export type ExplorerSection = "top" | "explore" | "featured";
 export type ExplorerViewMode = ExplorerSection | "category" | "search";
 
 interface UrlState {
@@ -62,7 +62,13 @@ function readUrlState(): UrlState {
   const category = categoryOrder().includes(requestedCategory)
     ? requestedCategory
     : ALL_CATEGORY;
-  const section = params.get("view") === "explore" ? "explore" : "top";
+  const viewParam = params.get("view");
+  const section: ExplorerSection =
+    viewParam === "explore"
+      ? "explore"
+      : viewParam === "featured"
+        ? "featured"
+        : "top";
   return { query: params.get("q") ?? "", category, section };
 }
 
@@ -169,14 +175,18 @@ export function usePluginExplorer(): PluginExplorerState {
     [categoryCounts, lang],
   );
   const hasQuery = query.trim().length > 0;
-  const viewMode: ExplorerViewMode = hasQuery
-    ? "search"
-    : section === "top"
-      ? "top"
-      : category === ALL_CATEGORY
-        ? "explore"
-        : "category";
+  const viewMode: ExplorerViewMode =
+    section === "featured"
+      ? "featured"
+      : hasQuery
+        ? "search"
+        : section === "top"
+          ? "top"
+          : category === ALL_CATEGORY
+            ? "explore"
+            : "category";
   const scopedItems = useMemo(() => {
+    if (section === "featured") return [];
     if (hasQuery) {
       return category === ALL_CATEGORY
         ? allIndexed
@@ -212,6 +222,7 @@ export function usePluginExplorer(): PluginExplorerState {
     if (query) params.set("q", query);
     if (category !== ALL_CATEGORY) params.set("cat", category);
     if (section === "explore") params.set("view", "explore");
+    if (section === "featured") params.set("view", "featured");
     const search = params.toString();
     const url = `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", url);
@@ -229,7 +240,7 @@ export function usePluginExplorer(): PluginExplorerState {
     setSectionState(value);
     setCategoryState(ALL_CATEGORY);
     setQueryState("");
-    if (value === "explore") {
+    if (value === "explore" || value === "featured") {
       window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
     }
   }, []);

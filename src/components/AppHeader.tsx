@@ -41,6 +41,14 @@ function NavIcon({ id }: { readonly id: HeaderNavItem["id"] }) {
       </svg>
     );
   }
+  if (id === "featured") {
+    // 星星：表示「精选」
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <polygon points="12 2.5 15.09 8.26 21.5 9.27 17 13.85 18.18 20.5 12 17.27 5.82 20.5 7 13.85 2.5 9.27 8.91 8.26 12 2.5" />
+      </svg>
+    );
+  }
   // 指南针：表示「探索」
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -61,7 +69,7 @@ export function AppHeader({
   onLanguageToggle,
 }: AppHeaderProps) {
   const header = useScrolledHeader();
-  const atTop = header.atTop && activeSection !== "explore";
+  const atTop = header.atTop && activeSection === "top";
 
   return (
     <header className={`site-header ${atTop ? "is-at-top" : "is-scrolled"}`}>
