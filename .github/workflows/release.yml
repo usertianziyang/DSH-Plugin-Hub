@@ -1,0 +1,263 @@
+name: Build & Release
+
+# ---------------------------------------------------------------------------
+# 触发条件
+#   1. push 到 main / master / release/* 分支：自动递增版本号并发布
+#   2. push 形如 v* 的 tag：以 tag 中的版本号发布
+#   3. 手动触发（workflow_dispatch）：可选择版本递增策略与是否为预发布
+# ---------------------------------------------------------------------------
+on:
+  push:
+    branches:
+      - main
+      - master
+      - release/*
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "版本号递增策略（仅在非 tag 触发时生效）"
+        required: false
+        type: choice
+        default: "patch"
+        options:
+          - patch
+          - minor
+          - major
+          - none
+      prerelease:
+        description: "是否作为预发布（pre-release）"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  release:
+    name: Build, Package & Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ---------- 版本号自动管理（在构建前完成，确保产物携带正确版本） ----------
+      - name: Determine version
+        id: version
+        run: |
+          set -euo pipefail
+
+          # tag 触发：直接使用 tag 中的版本号（如 v1.2.3 -> 1.2.3）
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "Version from tag: ${VERSION}"
+            exit 0
+          fi
+
+          # 分支 / 手动触发：根据策略在 package.json 当前版本上递增
+          CURRENT="$(node -p "require('./package.json').version")"
+          BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
+
+          # 通过环境变量向 node 传参，避免 shell 转义问题
+          VERSION="$(CURRENT="$CURRENT" BUMP="$BUMP" node -e '
+            const [a, b, c] = process.env.CURRENT.split(".").map(Number);
+            switch (process.env.BUMP) {
+              case "major": console.log(`${a + 1}.0.0`); break;
+              case "minor": console.log(`${a}.${b + 1}.0`); break;
+              case "patch": console.log(`${a}.${b}.${c + 1}`); break;
+              case "none":  console.log(`${a}.${b}.${c}`); break;
+              default:
+                console.error("未知的版本策略: " + process.env.BUMP);
+                process.exit(1);
+            }
+          ')"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Bumping ${CURRENT} -> ${VERSION} (${BUMP})"
+
+      - name: Update package version
+        if: startsWith(github.ref, 'refs/tags/') != true
+        run: |
+          node -e '
+            const fs = require("fs");
+            const v = process.argv[1];
+            const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            p.version = v;
+            fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+            try {
+              const l = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+              l.version = v;
+              if (l.packages && l.packages[""]) l.packages[""].version = v;
+              fs.writeFileSync("package-lock.json", JSON.stringify(l, null, 2) + "\n");
+            } catch (e) {
+              console.warn("跳过 package-lock.json 版本同步:", e.message);
+            }
+            console.log("package.json version -> " + v);
+          ' "${{ steps.version.outputs.version }}"
+
+      # ---------- 构建 ----------
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      # ---------- 打包产物（zip + tar.gz） ----------
+      - name: Package artifact
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          PKG_NAME="dsh-plugin-hub-${VERSION}"
+
+          mkdir -p "dist-package"
+          cp -R dist/* "dist-package/"
+
+          # 将构建版本写入产物，便于追溯
+          echo "${VERSION}" > "dist-package/VERSION"
+
+          cd dist-package
+          zip -r "../${PKG_NAME}.zip" .
+          tar -czf "../${PKG_NAME}.tar.gz" .
+          cd ..
+
+          ls -lh "${PKG_NAME}.zip" "${PKG_NAME}.tar.gz"
+
+      # ---------- Release 备注生成 ----------
+      - name: Generate release notes
+        id: notes
+        run: |
+          set -euo pipefail
+
+          # 收集本次发布包含的提交范围：
+          #   - 若当前处于 tag 上：上一个 tag .. 当前 tag
+          #   - 否则：最近一个 tag .. HEAD（无 tag 时取最近 20 条提交）
+          CURRENT_TAG="$(git describe --tags --exact-match 2>/dev/null || true)"
+
+          if [[ -n "$CURRENT_TAG" ]]; then
+            PREV_TAG="$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || true)"
+            if [[ -n "$PREV_TAG" ]]; then
+              RANGE="${PREV_TAG}..${CURRENT_TAG}"
+            else
+              ROOT="$(git rev-list --max-parents=0 HEAD)"
+              RANGE="${ROOT}..${CURRENT_TAG}"
+            fi
+          else
+            PREV_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+            if [[ -n "$PREV_TAG" ]]; then
+              RANGE="${PREV_TAG}..HEAD"
+            else
+              RANGE="HEAD~20..HEAD"
+            fi
+          fi
+
+          {
+            echo "## What's Changed"
+            echo ""
+            if git log --pretty=format:'- %s (%h)' "$RANGE" 2>/dev/null; then
+              echo ""
+            else
+              echo "- (本次发布无提交记录)"
+            fi
+          } > release-notes.md
+
+          cat release-notes.md
+
+      # ---------- 创建/更新 Release 并上传产物 ----------
+      - name: Create or Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.version.outputs.version }}"
+          name: "v${{ steps.version.outputs.version }}"
+          body_path: release-notes.md
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+          draft: false
+          files: |
+            dsh-plugin-hub-${{ steps.version.outputs.version }}.zip
+            dsh-plugin-hub-${{ steps.version.outputs.version }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------- 构建失败通知 ----------
+  # 默认通过创建/评论 GitHub Issue 通知（零配置）。
+  # 如需接入 IM，可在此 job 中替换为 Slack / 企业微信 / 飞书 webhook：
+  #   - name: Notify Slack
+  #     uses: rtCamp/action-slack-notify@v2
+  #     env:
+  #       SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+  #       SLACK_COLOR: danger
+  notify-failure:
+    name: Notify on Failure
+    needs: release
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify via GitHub issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runId = context.runId;
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${runId}`;
+            const branch = context.payload.ref || context.ref;
+            const title = `⚠️ Release 构建失败 (${branch})`;
+
+            const body = [
+              '## Release 构建失败',
+              '',
+              `- **运行地址**: ${runUrl}`,
+              `- **触发分支/Tag**: \`${branch}\``,
+              `- **触发者**: ${context.actor}`,
+              '',
+              '请查看工作流日志以定位失败原因。',
+            ].join('\n');
+
+            // 查找是否已存在同标题的 open issue，避免重复创建
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+            });
+
+            const existing = issues.find((i) => i.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body: `构建再次失败：${runUrl}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+                labels: ['bug', 'ci'],
+              });
+            }
