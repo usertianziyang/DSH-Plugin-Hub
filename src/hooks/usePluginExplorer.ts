@@ -23,7 +23,7 @@ export type AsyncState =
   | { readonly status: "success"; readonly snapshot: Snapshot }
   | { readonly status: "error"; readonly message: string };
 
-export type ExplorerSection = "top" | "explore" | "featured";
+export type ExplorerSection = "top" | "explore" | "featured" | "guide";
 export type ExplorerViewMode = ExplorerSection | "category" | "search";
 
 interface UrlState {
@@ -68,7 +68,9 @@ function readUrlState(): UrlState {
       ? "explore"
       : viewParam === "featured"
         ? "featured"
-        : "top";
+        : viewParam === "guide"
+            ? "guide"
+            : "top";
   return { query: params.get("q") ?? "", category, section };
 }
 
@@ -178,7 +180,9 @@ export function usePluginExplorer(): PluginExplorerState {
   const viewMode: ExplorerViewMode =
     section === "featured"
       ? "featured"
-      : hasQuery
+      : section === "guide"
+          ? "guide"
+          : hasQuery
         ? "search"
         : section === "top"
           ? "top"
@@ -186,7 +190,7 @@ export function usePluginExplorer(): PluginExplorerState {
             ? "explore"
             : "category";
   const scopedItems = useMemo(() => {
-    if (section === "featured") return [];
+    if (section === "featured" || section === "guide") return [];
     if (hasQuery) {
       return category === ALL_CATEGORY
         ? allIndexed
@@ -223,6 +227,7 @@ export function usePluginExplorer(): PluginExplorerState {
     if (category !== ALL_CATEGORY) params.set("cat", category);
     if (section === "explore") params.set("view", "explore");
     if (section === "featured") params.set("view", "featured");
+      if (section === "guide") params.set("view", "guide");
     const search = params.toString();
     const url = `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", url);
@@ -240,7 +245,7 @@ export function usePluginExplorer(): PluginExplorerState {
     setSectionState(value);
     setCategoryState(ALL_CATEGORY);
     setQueryState("");
-    if (value === "explore" || value === "featured") {
+    if (value === "explore" || value === "featured" || value === "guide") {
       window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
     }
   }, []);

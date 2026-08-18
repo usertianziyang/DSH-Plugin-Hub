@@ -1,6 +1,7 @@
 import { AppHeader } from "./components/AppHeader";
 import { CategoryFilter } from "./components/CategoryFilter";
 import { FeaturedPlugins } from "./components/FeaturedPlugins";
+import { GuideSection } from "./components/GuideSection";
 import { HeroSection } from "./components/HeroSection";
 import { PixelLogoBackground } from "./components/PixelLogoBackground";
 import { ResultsPanel } from "./components/ResultsPanel";
@@ -30,7 +31,9 @@ export default function App(_props: AppProps) {
       <main className="main-content">
         {explorer.viewMode === "featured" ? (
           <FeaturedPlugins items={explorer.snapshot?.items ?? []} t={explorer.t} />
-        ) : (
+        ) : explorer.viewMode === "guide" ? (
+            <GuideSection lang={explorer.lang} t={explorer.t} />
+          ) : (
           <>
             {explorer.viewMode === "top" ? (
               <HeroSection snapshot={explorer.snapshot} lang={explorer.lang} t={explorer.t} />

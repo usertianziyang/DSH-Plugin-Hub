@@ -15,7 +15,7 @@ export const APP_LINKS = Object.freeze({
 });
 
 export interface HeaderNavItem {
-  readonly id: "explore" | "top" | "featured";
+  readonly id: "explore" | "top" | "featured" | "guide";
   readonly labelKey: MessageKey;
 }
 
@@ -23,6 +23,7 @@ export const HEADER_NAV_ITEMS: readonly HeaderNavItem[] = [
   { id: "top", labelKey: "navTopTen" },
   { id: "featured", labelKey: "navFeatured" },
   { id: "explore", labelKey: "navExplore" },
+  { id: "guide", labelKey: "navGuide" },
 ];
 
 export interface FooterLink {

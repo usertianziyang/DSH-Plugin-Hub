@@ -1773,3 +1773,350 @@ button {
   }
 
 }
+
+/* ===== 使用指南 ===== */
+.guide-section {
+  max-width: 880px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.guide-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.guide-eyebrow {
+  margin: 0;
+  color: var(--primary);
+  font-family: var(--font-headline);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.guide-header h1 {
+  margin: 0;
+  color: var(--on-surface);
+  font-family: var(--font-headline);
+  font-size: clamp(28px, 5vw, 44px);
+  line-height: 1.1;
+}
+
+.guide-status {
+  margin: 0;
+  color: var(--on-surface-muted);
+}
+
+.guide-article {
+  min-width: 0;
+  padding: clamp(20px, 4vw, 40px);
+  background: var(--glass);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 48%, transparent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(3, 7, 18, 0.28);
+  backdrop-filter: blur(18px) saturate(120%);
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+}
+
+.markdown-body {
+  color: var(--on-surface);
+  font-size: 16px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 1.6em 0 0.6em;
+  color: var(--white);
+  font-family: var(--font-headline);
+  line-height: 1.25;
+}
+
+.markdown-body h1 {
+  margin-top: 0;
+  font-size: 30px;
+}
+
+.markdown-body h2 {
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 55%, transparent);
+  font-size: 24px;
+}
+
+.markdown-body h3 {
+  font-size: 20px;
+}
+
+.markdown-body h4 {
+  font-size: 17px;
+}
+
+.markdown-body p {
+  margin: 0.9em 0;
+}
+
+.markdown-body a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.markdown-body a:hover {
+  color: var(--primary-fixed);
+}
+
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.9em 0;
+  padding-left: 1.5em;
+}
+
+.markdown-body li {
+  margin: 0.3em 0;
+}
+
+.markdown-body blockquote {
+  margin: 1em 0;
+  padding: 0.2em 1em;
+  color: var(--on-surface-muted);
+  border-left: 3px solid var(--primary);
+  background: color-mix(in srgb, var(--surface-variant) 34%, transparent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.markdown-body blockquote p {
+  margin: 0.5em 0;
+}
+
+.markdown-body code {
+  padding: 0.15em 0.4em;
+  color: var(--primary-fixed);
+  background: color-mix(in srgb, var(--surface-high) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 38%, transparent);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.markdown-body pre {
+  margin: 1.1em 0;
+  padding: 16px 18px;
+  overflow-x: auto;
+  background: var(--surface-lowest);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 46%, transparent);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.markdown-body pre code {
+  padding: 0;
+  color: var(--on-surface);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre;
+}
+
+.guide-more {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  background: var(--glass-subtle);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 42%, transparent);
+  border-radius: var(--radius-lg);
+}
+
+.guide-more h2 {
+  margin: 0;
+  color: var(--on-surface);
+  font-family: var(--font-headline);
+  font-size: 20px;
+}
+
+.guide-article-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guide-article-list button {
+  width: 100%;
+  padding: 12px 14px;
+  color: var(--on-surface-muted);
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 15px;
+  cursor: pointer;
+  transition: color 160ms var(--ease), background 160ms var(--ease), border-color 160ms var(--ease);
+}
+
+.guide-article-list button:hover {
+  color: var(--white);
+  background: color-mix(in srgb, var(--surface-high) 72%, transparent);
+  border-color: color-mix(in srgb, var(--outline-variant) 46%, transparent);
+}
+
+.guide-article-list button.is-active {
+  color: var(--white);
+  background: color-mix(in srgb, var(--primary-container) 30%, var(--surface-high));
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+}
+
+.guide-coming-soon {
+  margin: 0;
+  color: var(--on-surface-muted);
+  font-size: 14px;
+}
+
+@media (max-width: 720px) {
+  .guide-article {
+    padding: var(--space-md);
+  }
+
+  .markdown-body {
+    font-size: 15px;
+  }
+
+  .markdown-body pre {
+    padding: 12px 14px;
+  }
+}
+
+/* ===== 使用指南：文章列表与详情 ===== */
+.guide-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.guide-card-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-md);
+}
+
+.guide-card {
+  width: 100%;
+  min-height: 120px;
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  color: var(--on-surface);
+  text-align: left;
+  background: var(--glass);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 46%, transparent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 36px rgba(3, 7, 18, 0.22);
+  cursor: pointer;
+  transition:
+    transform 180ms var(--ease),
+    border-color 180ms var(--ease),
+    background 180ms var(--ease),
+    box-shadow 180ms var(--ease);
+}
+
+.guide-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--primary) 58%, transparent);
+  background: color-mix(in srgb, var(--surface-high) 82%, var(--glass));
+  box-shadow: 0 16px 44px rgba(3, 7, 18, 0.3);
+}
+
+.guide-card:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.guide-card-title {
+  color: var(--white);
+  font-family: var(--font-headline);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.guide-card-description {
+  color: var(--on-surface-muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.guide-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--space-lg);
+  padding: 8px 14px;
+  color: var(--on-surface-muted);
+  background: var(--glass-subtle);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 48%, transparent);
+  border-radius: var(--radius-full);
+  font-family: var(--font-headline);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 160ms var(--ease), border-color 160ms var(--ease), background 160ms var(--ease), transform 160ms var(--ease);
+}
+
+.guide-back:hover {
+  color: var(--white);
+  border-color: color-mix(in srgb, var(--primary) 58%, transparent);
+  background: color-mix(in srgb, var(--primary-container) 18%, var(--glass-subtle));
+}
+
+.guide-back:active {
+  transform: scale(0.97);
+}
+
+@media (max-width: 720px) {
+  .guide-card-list {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-card {
+    min-height: 0;
+    padding: var(--space-md);
+  }
+}
+
+
+
+
+

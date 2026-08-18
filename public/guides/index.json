@@ -1,0 +1,10 @@
+{
+  "articles": [
+    {
+      "slug": "dsh-global-installation-guide",
+      "title": "DeepSeek DSH 全局安装与使用指南",
+      "description": "在 Windows 和 macOS 上将 DSH 安装为全局命令，并完成基本使用配置。",
+      "file": "guides/dsh-global-installation-guide.md"
+    }
+  ]
+}

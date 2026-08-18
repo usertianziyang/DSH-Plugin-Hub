@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+
 import type { ResolvedFeaturedPlugin } from "../data/featuredPlugins";
 import type { Translate } from "../ui-types";
 import { PluginCard } from "./PluginCard";
@@ -9,6 +9,7 @@ export interface FeaturedPluginCardProps {
 }
 
 export function FeaturedPluginCard({ plugin, t }: FeaturedPluginCardProps) {
+  /*
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<number | null>(null);
 
@@ -34,7 +35,7 @@ export function FeaturedPluginCard({ plugin, t }: FeaturedPluginCardProps) {
       <span className="featured-version">
         {plugin.version ? `v${plugin.version}` : t("featuredLatest")}
       </span>
-      <code className="featured-install-command">{plugin.installCommand}</code>
+      <code className="featured-install-command" title={plugin.installCommand}>{plugin.installCommand}</code>
       <button
         type="button"
         className={`copy-button${copied ? " is-copied" : ""}`}
@@ -56,5 +57,6 @@ export function FeaturedPluginCard({ plugin, t }: FeaturedPluginCardProps) {
     </div>
   );
 
-  return <PluginCard item={plugin.item} t={t} footer={footer} />;
+  */
+  return <PluginCard item={plugin.item} t={t} />;
 }
