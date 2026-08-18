@@ -100,6 +100,8 @@ export const FEATURED_PLUGINS: readonly FeaturedPluginConfig[] = [
     category: "interface",
     version: null,
     installCommand: "dsh install dsh-mic-input",
+    description:
+      "为 DSH Web UI 输入框添加麦克风按钮：浏览器 Web Speech API 实时语音转文字，纯客户端运行、无需服务器与 API Key。Microphone voice input for the DeepSeek Harness Web UI — in the browser, no server, no keys.",
   },
   {
     url: "https://github.com/liustack/modlens",

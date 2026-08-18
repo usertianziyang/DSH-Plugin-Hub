@@ -1618,6 +1618,12 @@ button {
   flex: 0 0 auto;
 }
 
+/* 展开后所有分类标签换行居中显示，避免横向溢出截断 */
+.featured-category-filter-shell.is-expanded .category-filter {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+
 .featured-plugins {
   display: flex;
   flex-direction: column;
