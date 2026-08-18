@@ -115,7 +115,7 @@ export function AppHeader({
           </button>
           <a
             className="github-button"
-            href={APP_LINKS.topic}
+            href={APP_LINKS.repository}
             target="_blank"
             rel="noopener noreferrer"
           >

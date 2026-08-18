@@ -146,6 +146,10 @@ test("renders an accessible data-source link and repository cards on success", a
   assert.equal(footer.querySelector("h2")?.id, "footer-title");
   assert.equal(sourceLink.getAttribute("href"), "https://github.com/topics/dsh-plugin");
   assert.equal(sourceLink.getAttribute("rel"), "noopener noreferrer");
+  assert.equal(
+    document.querySelector<HTMLAnchorElement>(".github-button")?.getAttribute("href"),
+    "https://github.com/usertianziyang/DSH-Plugin-Hub",
+  );
   assert.equal(requestInit?.cache, "no-store");
 
   const repoLink = await screen.findByRole("link", {

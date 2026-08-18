@@ -10,6 +10,7 @@ export const APP_BADGE = "Deepseek Harness";
 export const APP_LINKS = Object.freeze({
   home: "/",
   host: "https://github.com/deepseek-ai/deepseek-harness",
+  repository: "https://github.com/usertianziyang/DSH-Plugin-Hub",
   topic: "https://github.com/topics/dsh-plugin",
 });
 
