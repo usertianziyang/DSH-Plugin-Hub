@@ -728,8 +728,8 @@ export async function writeSnapshotAtomic(
 // read-only and its serverless functions are too short-lived for the recursive
 // sharded sync, so the sync itself always runs in GitHub Actions (a long-running
 // environment with `GITHUB_TOKEN`). After a successful sync, this step commits
-// the refreshed `public/plugins.json` back to the repository and then pings the
-// Vercel Deploy Hook, which triggers a fresh production deployment.
+// the refreshed `public/plugins.json` back to the repository. The connected
+// Vercel project redeploys automatically from that push.
 // ---------------------------------------------------------------------------
 
 /** Report (via git) whether the snapshot actually changed on disk. */
@@ -762,38 +762,6 @@ async function commitSnapshot(outputPath: string): Promise<void> {
   await run(["config", "user.email", "github-actions[bot]@users.noreply.github.com"]);
   await run(["add", outputPath]);
   await run(["commit", "-m", "chore(data): refresh plugins.json from GitHub topic sync"]);
-}
-
-/** Trigger a Vercel production deployment via the Deploy Hook (if configured). */
-async function triggerVercelDeploy(): Promise<boolean> {
-  const hookUrl = process.env.VERCEL_DEPLOY_HOOK_URL?.trim() ?? "";
-  if (!hookUrl) {
-    console.log("[sync] VERCEL_DEPLOY_HOOK_URL not set; skipping Vercel deploy trigger.");
-    return false;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(hookUrl, {
-      method: "POST",
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!response.ok) {
-      console.warn(
-        `[sync] Vercel deploy hook returned HTTP ${response.status}; ` +
-          `deployment may still have been queued.`,
-      );
-      return false;
-    }
-    console.log("[sync] Vercel deploy triggered via hook.");
-    return true;
-  } catch (error) {
-    clearTimeout(timeout);
-    console.warn(`[sync] Failed to trigger Vercel deploy: ${safeMessage(error)}`);
-    return false;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -833,7 +801,6 @@ async function main(): Promise<void> {
       } else {
         console.log("[sync] plugins.json unchanged; nothing to commit.");
       }
-      await triggerVercelDeploy();
     }
   } catch (error) {
     console.error(`[sync] FAILED: ${safeMessage(error)}`);

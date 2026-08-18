@@ -160,22 +160,18 @@ VITE_BASE=/my-app/ npm run build
 主题同步脚本（`scripts/sync-github.ts`）会按 2.1 秒节流对 GitHub Search API 进行递归分片与完整性校验，短时间内会发起大量请求，整体耗时以分钟计。Vercel 的 Serverless Function 运行时长太短，无法承载这种任务；同时 Vercel 构建产物的文件系统是只读的，无法在运行时回写 `public/plugins.json`。因此同步必须在 Vercel 之外执行，方案如下：
 
 1. **GitHub Actions** 使用 `15 */6 * * *` 的 cron（每 6 小时）以及手动触发来运行同步，使用 `github.token`（无需存储任何个人 Token）。
-2. 同步成功后，工作流会把刷新的 `public/plugins.json` **提交回 `main` 分支**，并 **ping Vercel Deploy Hook**，从而立即触发一次新的生产部署。
+2. 同步成功后，工作流会把刷新的 `public/plugins.json` **提交回 `main` 分支**；已连接 GitHub 的 Vercel 项目会因这次推送自动重新部署。
 3. Vercel 只负责托管静态站点，从不调用 GitHub API。
 
 #### 一次性配置
 
-1. **在 Vercel 导入仓库。** 选择 "Vite" 框架预设，或直接使用 `vercel.json` 中的值（`npm run build`，输出 `dist`）。Vercel 会在每次 `main` 分支有推送时重新构建，因此同步产生的数据提交也会触发重新部署——下面的 Deploy Hook 是一个额外的、立即触发的快捷通道。
-2. **创建 Deploy Hook。** 在 Vercel 中：*Project → Settings → Git → Deploy Hooks → "Create Hook"*，复制生成的 URL。
-3. **存为 GitHub Secret。** 在仓库中：*Settings → Secrets and variables → Actions → "New repository secret"*：
-   - **Name：** `VERCEL_DEPLOY_HOOK_URL`
-   - **Value：** 上一步复制的 Deploy Hook URL。
+1. **在 Vercel 导入仓库。** 选择 "Vite" 框架预设，或直接使用 `vercel.json` 中的值（`npm run build`，输出 `dist`）。Vercel 会在每次 `main` 分支有推送时重新构建，同步产生的数据提交也会触发重新部署。
+2. **开启 GitHub Actions 写权限。** 在仓库中进入 *Settings → Actions → General → Workflow permissions*，选择 **Read and write permissions**，这样定时/手动同步才能提交 `public/plugins.json`。
 
-完成以上三步即可。在下一次定时（或手动触发的）同步中，工作流会自动刷新数据、提交并重新部署 Vercel。
+完成以上两步即可。下一次定时（或手动触发）的同步会刷新数据并提交，Vercel 随后自动重新部署。不需要配置 Vercel 环境变量或 Deploy Hook。
 
 #### 说明
 
-- `VERCEL_DEPLOY_HOOK_URL` 是**可选的**：如果未设置，同步仍会提交数据，Vercel 也会因 `main` 分支的推送触发重新部署（比走 Hook 略慢）。设置 Hook 可以让重新部署立即生效。
 - 同步使用的 `GITHUB_TOKEN` 是 GitHub 自带的每次运行 Token，**无需**存储任何长期 Token。它对 API 只需要 `contents: read`，对数据提交只需要 `contents: write`（在定时 / 手动运行中由工作流自动授予）。
 
 ## 🤝 持续集成

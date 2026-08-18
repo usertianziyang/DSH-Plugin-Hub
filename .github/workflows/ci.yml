@@ -39,13 +39,12 @@ jobs:
 
       # Real GitHub data sync runs only on schedule or manual dispatch, and is
       # the only step that uses a token. Regular pushes/PRs stay offline. The
-      # sync step also commits any change to plugins.json and triggers a Vercel
-      # deploy via the VERCEL_DEPLOY_HOOK_URL secret.
+      # sync step commits any change to plugins.json; the resulting push
+      # triggers the connected Vercel project automatically.
       - name: Sync data (schedule/manual only)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
         run: npm run sync
 
       # Push the data commit made by the sync step so the repository (and any

@@ -160,22 +160,18 @@ This project targets **Vercel** as its host. The site is a fully static build (n
 The topic sync (`scripts/sync-github.ts`) recursively shards the GitHub Search API with a 2.1 s throttle and integrity checks, issuing a large number of requests that can take minutes. Vercel serverless functions are too short-lived for this, and Vercel's build filesystem is read-only, so the sync cannot run on Vercel. Instead:
 
 1. **GitHub Actions** runs the sync on a `15 */6 * * *` cron (every 6 hours) and on manual dispatch, using `github.token` (no personal token stored).
-2. After a successful sync, the workflow **commits the refreshed `public/plugins.json`** back to `main` and **pings the Vercel Deploy Hook**, which triggers a fresh production deployment with the new data.
+2. After a successful sync, the workflow **commits the refreshed `public/plugins.json`** back to `main`; the connected Vercel project automatically redeploys from that push.
 3. Vercel only serves the static site and never talks to the GitHub API.
 
 #### One-time setup
 
-1. **Import the repo in Vercel.** Choose the "Vite" framework preset, or rely on the values in `vercel.json` (`npm run build`, output `dist`). Vercel will rebuild on every push to `main`, so the data commit from the sync also redeploys — the Deploy Hook below is an extra, immediate trigger.
-2. **Create a Deploy Hook.** In Vercel: *Project → Settings → Git → Deploy Hooks → "Create Hook"*. Copy the resulting URL.
-3. **Store it as a GitHub secret.** In the repo: *Settings → Secrets and variables → Actions → "New repository secret"*, with:
-   - **Name:** `VERCEL_DEPLOY_HOOK_URL`
-   - **Value:** the Deploy Hook URL from step 2.
+1. **Import the repo in Vercel.** Choose the "Vite" framework preset, or rely on the values in `vercel.json` (`npm run build`, output `dist`). Vercel rebuilds on every push to `main`, including the data commit from the sync workflow.
+2. **Enable GitHub Actions write permissions.** In the repository, open *Settings → Actions → General → Workflow permissions* and select **Read and write permissions** so scheduled/manual syncs can commit `public/plugins.json`.
 
-That is all. On the next scheduled (or manually dispatched) sync, the workflow will refresh the data, commit it, and redeploy Vercel automatically.
+That is all. On the next scheduled (or manually dispatched) sync, the workflow will refresh the data, commit it, and Vercel will redeploy automatically. No Vercel environment variable or Deploy Hook is required.
 
 #### Notes
 
-- `VERCEL_DEPLOY_HOOK_URL` is **optional**: if unset, the sync still commits the data, and Vercel redeploys on the resulting push to `main` (slightly slower than the hook). Setting the hook makes redeploy immediate.
 - The `GITHUB_TOKEN` used by the sync is GitHub's built-in per-run token; no long-lived token needs to be stored. It only needs `contents: read` for the API and `contents: write` for the data commit (granted automatically on scheduled / manual runs).
 
 ## 🤝 CI
