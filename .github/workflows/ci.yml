@@ -23,7 +23,7 @@ jobs:
     # The scheduled/manual runs commit the refreshed plugins.json back to the
     # repository, so they need write access; PR runs stay read-only.
     permissions:
-      contents: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
+      contents: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'write' || 'read' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
