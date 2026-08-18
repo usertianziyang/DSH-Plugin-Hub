@@ -128,11 +128,14 @@ afterEach(async () => {
 });
 
 test("renders an accessible data-source link and repository cards on success", async () => {
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify(snapshot([EXAMPLE_ITEM])), {
+  let requestInit: RequestInit | undefined;
+  globalThis.fetch = (async (_input, init) => {
+    requestInit = init;
+    return new Response(JSON.stringify(snapshot([EXAMPLE_ITEM])), {
       status: 200,
       headers: { "content-type": "application/json" },
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
 
   render(createElement(App));
 
@@ -143,6 +146,7 @@ test("renders an accessible data-source link and repository cards on success", a
   assert.equal(footer.querySelector("h2")?.id, "footer-title");
   assert.equal(sourceLink.getAttribute("href"), "https://github.com/topics/dsh-plugin");
   assert.equal(sourceLink.getAttribute("rel"), "noopener noreferrer");
+  assert.equal(requestInit?.cache, "no-store");
 
   const repoLink = await screen.findByRole("link", {
     name: /Open owner\/example-plugin on GitHub/i,
