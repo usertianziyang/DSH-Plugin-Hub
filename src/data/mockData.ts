@@ -5,7 +5,7 @@ export const EXPLORER_PAGE_SIZE = 30;
 export const COLLAPSED_CATEGORY_LIMIT = 4;
 export const HEADER_REVEAL_SCROLL_Y = 8;
 export const APP_NAME = "DSH Plugin Hub";
-export const APP_BADGE = "Deepseek Harness";
+export const APP_BADGE = "DSH HUB";
 
 export const APP_LINKS = Object.freeze({
   home: "/",

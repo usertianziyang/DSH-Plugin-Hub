@@ -35,6 +35,7 @@ const messages = {
     searchPlaceholder: "Search by name, owner, description, language, license, or topic…",
     searchHint: "Search across names, owners, descriptions, languages, licenses, and topics.",
     clearSearch: "Clear search",
+    activeSearch: "Search: {query}",
     closeSearch: "Close search",
     filterApply: "Apply filters",
 
@@ -146,6 +147,7 @@ const messages = {
     searchPlaceholder: "按名称、Owner、描述、语言、许可证或标签搜索…",
     searchHint: "支持搜索名称、Owner、描述、语言、许可证与标签。",
     clearSearch: "清除搜索",
+    activeSearch: "搜索：{query}",
     closeSearch: "关闭搜索",
     filterApply: "应用筛选",
 

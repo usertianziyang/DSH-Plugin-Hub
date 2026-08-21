@@ -9,6 +9,7 @@ export interface SearchDialogProps {
   readonly results: readonly RankedIndexedItem[];
   readonly totalCount: number;
   readonly onQueryChange: (value: string) => void;
+  readonly onSubmit: () => void;
   readonly onClose: () => void;
 }
 
@@ -20,6 +21,7 @@ export function SearchDialog({
   results,
   totalCount,
   onQueryChange,
+  onSubmit,
   onClose,
 }: SearchDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -36,7 +38,7 @@ export function SearchDialog({
 
   // Keep the top of the result list visible while typing.
   useEffect(() => {
-    resultsRef.current?.scrollTo({ top: 0 });
+    resultsRef.current?.scrollTo?.({ top: 0 });
   }, [query]);
 
   const visibleResults = useMemo(
@@ -47,11 +49,12 @@ export function SearchDialog({
 
   return (
     <div className="search-dialog-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
+      <dialog
+        open
         className="search-dialog"
-        role="dialog"
         aria-modal="true"
         aria-labelledby="search-dialog-title"
+        onCancel={onClose}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="search-dialog-heading">
@@ -71,35 +74,46 @@ export function SearchDialog({
           </button>
         </div>
 
-        <label className="search-field">
-          <span className="visually-hidden">{t("searchLabel")}</span>
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="7" />
-            <path d="m16 16 5 5" />
-          </svg>
-          <input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={t("searchPlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-          />
-          {hasQuery ? (
-            <button
-              type="button"
-              className="search-field-clear"
-              onClick={() => onQueryChange("")}
-              aria-label={t("clearSearch")}
-            >
-              <svg aria-hidden="true" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M9 9l6 6M15 9l-6 6" />
-              </svg>
-            </button>
-          ) : null}
-        </label>
+        <form
+          className="search-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <label className="search-field">
+            <span className="visually-hidden">{t("searchLabel")}</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m16 16 5 5" />
+            </svg>
+            <input
+              ref={inputRef}
+              type="search"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder={t("searchPlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {hasQuery ? (
+              <button
+                type="button"
+                className="search-field-clear"
+                onClick={() => onQueryChange("")}
+                aria-label={t("clearSearch")}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M9 9l6 6M15 9l-6 6" />
+                </svg>
+              </button>
+            ) : null}
+          </label>
+          <button type="submit" className="search-submit">
+            {t("searchAction")}
+          </button>
+        </form>
 
         <p className="search-hint">{t("searchHint")}</p>
 
@@ -141,7 +155,7 @@ export function SearchDialog({
             </ol>
           )}
         </div>
-      </section>
+      </dialog>
     </div>
   );
 }

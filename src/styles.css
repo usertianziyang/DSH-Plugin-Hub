@@ -648,6 +648,79 @@ button {
   background: color-mix(in srgb, var(--secondary) 12%, var(--glass-subtle));
 }
 
+.active-search {
+  width: min(100%, 780px);
+  min-height: 44px;
+  margin: 0 auto var(--space-md);
+  padding: 4px 6px 4px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--primary-fixed);
+  background: color-mix(in srgb, var(--primary) 12%, var(--glass-subtle));
+  border: 1px solid color-mix(in srgb, var(--primary) 58%, transparent);
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.active-search > svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.active-search-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-search-clear {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--primary-fixed);
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 42%, transparent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color 160ms var(--ease), background 160ms var(--ease), border-color 160ms var(--ease), transform 160ms var(--ease);
+}
+
+.active-search-clear svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.active-search-clear:hover {
+  color: var(--white);
+  background: var(--primary-container);
+  border-color: var(--primary);
+  transform: scale(1.05);
+}
+
+.active-search-clear:active {
+  transform: scale(0.96);
+}
+
 .category-overflow-button svg {
   width: 16px;
   height: 16px;
@@ -1045,11 +1118,14 @@ button {
 .search-dialog {
   width: min(100%, 760px);
   max-height: min(88vh, 820px);
+  position: static;
+  color: var(--on-surface);
+  background: var(--glass-strong);
+  border: 1px solid color-mix(in srgb, var(--primary) 58%, var(--outline-variant));
   margin: auto;
   padding: var(--space-lg);
   display: flex;
   flex-direction: column;
-  border-color: color-mix(in srgb, var(--primary) 58%, var(--outline-variant));
   border-radius: var(--radius-xl);
   box-shadow: 0 28px 100px rgba(3, 7, 18, 0.62), 0 0 34px rgba(59, 130, 246, 0.16);
 }
@@ -1209,6 +1285,51 @@ button {
   margin: 10px 2px 0;
   color: var(--outline);
   font-size: 12px;
+}
+
+.search-form {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.inline-search {
+  width: min(100%, 780px);
+  margin: 0 auto var(--space-md);
+}
+
+.search-form .search-field {
+  min-width: 0;
+  flex: 1;
+}
+
+.search-submit {
+  min-width: 108px;
+  min-height: 58px;
+  padding: 0 20px;
+  color: var(--white);
+  background: linear-gradient(105deg, var(--primary-container), var(--surface-highest));
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--white) 12%, transparent),
+    0 8px 24px color-mix(in srgb, var(--primary) 18%, transparent);
+  font-family: var(--font-headline);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 160ms var(--ease), background 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+
+.search-submit:hover {
+  background: linear-gradient(105deg, var(--primary), var(--primary-container));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--white) 18%, transparent),
+    0 10px 28px color-mix(in srgb, var(--primary) 30%, transparent);
+  transform: translateY(-1px);
+}
+
+.search-submit:active {
+  transform: translateY(1px);
 }
 
 .search-results-head {
@@ -1579,6 +1700,16 @@ button {
     margin: 0;
     padding: var(--space-md);
     border-radius: var(--radius-lg);
+  }
+
+  .search-form {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .search-submit {
+    width: 100%;
+    min-height: 52px;
   }
 
   .search-results-head {
@@ -2115,8 +2246,5 @@ button {
     padding: var(--space-md);
   }
 }
-
-
-
 
 

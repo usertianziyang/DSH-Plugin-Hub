@@ -38,9 +38,11 @@ export interface PluginExplorerState {
   readonly lang: Lang;
   readonly t: Translate;
   readonly query: string;
+  readonly searchDraft: string;
   readonly category: string;
   readonly categoryOptions: readonly CategoryOption[];
   readonly filteredItems: readonly RankedIndexedItem[];
+  readonly searchDraftResults: readonly RankedIndexedItem[];
   readonly section: ExplorerSection;
   readonly viewMode: ExplorerViewMode;
   readonly activeCategoryLabel: string;
@@ -48,7 +50,10 @@ export interface PluginExplorerState {
   readonly totalCount: number;
   readonly limit: number;
   readonly searchOpen: boolean;
-  readonly setQuery: (value: string) => void;
+  readonly inlineSearchOpen: boolean;
+  readonly setSearchDraft: (value: string) => void;
+  readonly applySearch: () => void;
+  readonly clearSearch: () => void;
   readonly setCategory: (value: string) => void;
   readonly setSection: (value: ExplorerSection) => void;
   readonly toggleLanguage: () => void;
@@ -85,11 +90,13 @@ export function usePluginExplorer(): PluginExplorerState {
   const [state, setState] = useState<AsyncState>({ status: "idle" });
   const [lang, setLang] = useState<Lang>(() => detectLang());
   const [query, setQueryState] = useState(initialUrlState.query);
+  const [searchDraft, setSearchDraftState] = useState(initialUrlState.query);
   const [category, setCategoryState] = useState(initialUrlState.category);
   const [section, setSectionState] = useState<ExplorerSection>(
     initialUrlState.section,
   );
-  const [searchOpen, setSearchOpen] = useState(initialUrlState.query.length > 0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [inlineSearchOpen, setInlineSearchOpen] = useState(false);
 
   const t = useMemo<Translate>(
     () => (key, params) => translate(lang, key, params),
@@ -159,6 +166,15 @@ export function usePluginExplorer(): PluginExplorerState {
     for (const item of allItems) map.set(item.id, categorize(item));
     return map;
   }, [allItems]);
+  const searchScopeItems = useMemo(
+    () =>
+      category === ALL_CATEGORY
+        ? allIndexed
+        : allIndexed.filter(
+            (entry) => categorized.get(entry.item.id) === category,
+          ),
+    [allIndexed, categorized, category],
+  );
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>([[ALL_CATEGORY, allItems.length]]);
     for (const id of categorized.values()) {
@@ -192,11 +208,7 @@ export function usePluginExplorer(): PluginExplorerState {
   const scopedItems = useMemo(() => {
     if (section === "featured" || section === "guide") return [];
     if (hasQuery) {
-      return category === ALL_CATEGORY
-        ? allIndexed
-        : allIndexed.filter(
-            (entry) => categorized.get(entry.item.id) === category,
-          );
+      return searchScopeItems;
     }
     if (section === "top") return topIndexed;
     if (category !== ALL_CATEGORY) {
@@ -205,10 +217,14 @@ export function usePluginExplorer(): PluginExplorerState {
       );
     }
     return allIndexed;
-  }, [allIndexed, categorized, category, hasQuery, section, topIndexed]);
+  }, [allIndexed, categorized, category, hasQuery, searchScopeItems, section, topIndexed]);
   const filteredItems = useMemo(
     () => filterIndexed(scopedItems, query),
     [query, scopedItems],
+  );
+  const searchDraftResults = useMemo(
+    () => filterIndexed(searchScopeItems, searchDraft),
+    [searchDraft, searchScopeItems],
   );
   const activeCategoryLabel = useMemo(
     () => categoryLabel(category, lang),
@@ -233,9 +249,21 @@ export function usePluginExplorer(): PluginExplorerState {
     window.history.replaceState(null, "", url);
   }, [category, query, section]);
 
-  const setQuery = useCallback((value: string) => {
-    if (value.trim()) setSectionState("explore");
-    setQueryState(value);
+  const setSearchDraft = useCallback((value: string) => {
+    setSearchDraftState(value);
+  }, []);
+  const applySearch = useCallback(() => {
+    const nextQuery = searchDraft.trim();
+    setSectionState("explore");
+    setQueryState(nextQuery);
+    setSearchOpen(false);
+    setInlineSearchOpen(nextQuery.length === 0);
+  }, [searchDraft]);
+  const clearSearch = useCallback(() => {
+    setSectionState("explore");
+    setQueryState("");
+    setSearchDraftState("");
+    setInlineSearchOpen(true);
   }, []);
   const setCategory = useCallback((value: string) => {
     setSectionState("explore");
@@ -245,18 +273,21 @@ export function usePluginExplorer(): PluginExplorerState {
     setSectionState(value);
     setCategoryState(ALL_CATEGORY);
     setQueryState("");
+    setSearchDraftState("");
+    setInlineSearchOpen(false);
     if (value === "explore" || value === "featured" || value === "guide") {
       window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
     }
   }, []);
   const toggleLanguage = useCallback(() => {
-    setLang((current) => {
-      const next = current === "en" ? "zh" : "en";
-      persistLang(next);
-      return next;
-    });
-  }, []);
-  const openSearch = useCallback(() => setSearchOpen(true), []);
+    const next = lang === "en" ? "zh" : "en";
+    setLang(next);
+    persistLang(next);
+  }, [lang]);
+  const openSearch = useCallback(() => {
+    setSearchDraftState(query);
+    setSearchOpen(true);
+  }, [query]);
   const closeSearch = useCallback(() => setSearchOpen(false), []);
 
   return {
@@ -265,9 +296,11 @@ export function usePluginExplorer(): PluginExplorerState {
     lang,
     t,
     query,
+    searchDraft,
     category,
     categoryOptions,
     filteredItems,
+    searchDraftResults,
     section,
     viewMode,
     activeCategoryLabel,
@@ -275,7 +308,10 @@ export function usePluginExplorer(): PluginExplorerState {
     totalCount: allItems.length,
     limit: TOP_PLUGIN_LIMIT,
     searchOpen,
-    setQuery,
+    inlineSearchOpen,
+    setSearchDraft,
+    applySearch,
+    clearSearch,
     setCategory,
     setSection,
     toggleLanguage,

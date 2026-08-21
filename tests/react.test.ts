@@ -262,6 +262,61 @@ test("shows the full-index category navigation in Explore", async () => {
   assert.ok(screen.getByRole("button", { name: /Uncategorized/i }));
 });
 
+test("keeps draft search separate and clears an applied search from the page", async () => {
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(snapshot([EXAMPLE_ITEM, rankedItem(456, 80)])), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+
+  render(createElement(App));
+
+  await screen.findByText(/Explore open-source plugins/i);
+  fireEvent.click(screen.getByRole("button", { name: /Search plugins/i }));
+
+  const input = await screen.findByRole("searchbox");
+  fireEvent.change(input, { target: { value: "example-plugin" } });
+  assert.equal(
+    screen.getByRole("button", { name: /^Top 10$/i }).getAttribute("aria-pressed"),
+    "true",
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /Close search/i }));
+  assert.equal(screen.queryByText("Search: example-plugin"), null);
+  assert.equal(new URL(window.location.href).searchParams.get("q"), null);
+
+  fireEvent.click(screen.getByRole("button", { name: /Search plugins/i }));
+  const reopenedInput = await screen.findByRole("searchbox");
+  fireEvent.change(reopenedInput, { target: { value: "example-plugin" } });
+  fireEvent.click(screen.getByRole("button", { name: /^Search$/i }));
+
+  assert.equal(screen.queryByRole("dialog"), null);
+  assert.ok(screen.getByText("Search: example-plugin"));
+  assert.equal(
+    screen.getByRole("button", { name: /^Explore$/i }).getAttribute("aria-pressed"),
+    "true",
+  );
+  assert.equal(new URL(window.location.href).searchParams.get("q"), "example-plugin");
+
+  fireEvent.click(screen.getByRole("button", { name: /^Clear search$/i }));
+  assert.equal(screen.queryByText("Search: example-plugin"), null);
+  assert.equal(new URL(window.location.href).searchParams.get("q"), null);
+  const inlineInput = screen.getByRole("searchbox");
+  fireEvent.change(inlineInput, { target: { value: "plugin-456" } });
+  fireEvent.click(screen.getByRole("button", { name: /^Search$/i }));
+  assert.ok(screen.getByText("Search: plugin-456"));
+  assert.equal(new URL(window.location.href).searchParams.get("q"), "plugin-456");
+
+  fireEvent.click(screen.getByRole("button", { name: /^Clear search$/i }));
+  assert.ok(screen.getByRole("searchbox"));
+  assert.equal(screen.queryByText("Search: plugin-456"), null);
+  assert.equal(new URL(window.location.href).searchParams.get("q"), null);
+  assert.equal(
+    screen.getByRole("button", { name: /^Explore$/i }).getAttribute("aria-pressed"),
+    "true",
+  );
+});
+
 test("switches UI language between English and Chinese", async () => {
   globalThis.fetch = (async () =>
     new Response(JSON.stringify(snapshot([EXAMPLE_ITEM])), {
