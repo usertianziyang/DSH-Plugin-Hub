@@ -20,7 +20,7 @@
 - ⚡ **完全静态** — `dist/` 即纯静态 SPA，无服务器、浏览器不发任何 API 请求、无任何追踪。
 - 🔍 **客户端搜索与分页** — NFKC 归一化、不区分大小写、AND 语义，跨名称、Owner、描述、语言、许可证、标签进行搜索。
 - 🏷️ **精选分类** — MCP、Web UI、命令行、桌面、视觉、记忆、智能体、安全、开发工具、编辑器集成、精选列表，并提供统一的 **全部 / 未分类** 视图。
-- 🛡️ **静态校验的数据** — 每个同步分片都经过端到端的完整性检查；绝不发布截断或不完整的数据。
+- 🛡️ **静态校验的数据** — 每个同步分片都经过端到端的完整性检查；绝不发布截断或页面重叠的数据，GitHub 自身无法提供的那点缺口则以 `meta.count_deficit` 如实公开。
 - ⏰ **自动刷新** — GitHub Actions 每 6 小时执行一次 cron 同步；Vercel 会在每次数据提交后自动重新部署。
 - ♿ **响应式 & 无障碍** — 顶部、搜索、底部固定；尊重 `prefers-color-scheme` 与 `prefers-reduced-motion`。
 
@@ -67,17 +67,22 @@ GitHub Search 每页最多返回 100 条结果，且任意查询最多只能返�
 topic:dsh-plugin created:2008-01-01..<当天 UTC>
 ```
 
-任何 `total_count` 超过 1,000 的分片，会按日期区间中点拆分为两个相邻、不重叠、无间隔的闭区间。当一个区间已经缩小到单日但仍超过 1,000 条结果（实际中很常见——单日可能包含数千个仓库）时，同步会回退到第二个正交维度，按 Stars 数二分（`stars:min..max`）。若单一 Stars 值仍需多页（此时 `sort=stars` 已无序可言——所有仓库并列），同步会回退到第三个正交维度，按当天内的创建时间戳二分（精确到秒），把每个分片压成单页，彻底消除 offset 分页漂移。若单秒仍超出页大小，同步直接中止。**绝不发布截断的数据。** 所有分片最终按 GitHub 仓库 `id` 合并去重，再全局重排。
+任何 `total_count` 超过 1,000 的分片，会按日期区间中点拆分为两个相邻、不重叠、无间隔的闭区间。当一个区间已经缩小到单日但仍超过 1,000 条结果（实际中很常见——单日可能包含数千个仓库）时，同步会回退到第二个正交维度，按 Stars 数二分（`stars:min..max`）。若单一 Stars 值仍需多页（此时 `sort=stars` 已无序可言——所有仓库并列），同步会回退到第三个正交维度，按当天内的创建时间戳二分（精确到秒），把每个分片压成单页，彻底消除 offset 分页漂移。若单秒仍超出页大小，同步直接中止。若某个分片因分页重叠而无法干净取尽，同步会改用更细的维度重新分片，而不是让整次同步失败。**绝不发布截断的数据。** 所有分片最终按 GitHub 仓库 `id` 合并去重，再全局重排。
 
 ### 完整性保证
 
 一次同步只在**所有**检查通过时才被视为"成功"：
 
 - ✅ 每个 API 响应必须 HTTP 成功且 `incomplete_results === false`。
-- ✅ 每个分片 `total_count <= 1000`，恰好抓取 `Math.ceil(total_count / 100)` 页，去重后的数量等于首页 `total_count`。
+- ✅ 每个 `total_count <= 1000` 的分片，恰好抓取 `Math.ceil(total_count / 100)` 页，且各页之间不出现重叠。去重后的数量与首页 `total_count` 的差值必须落在 GitHub 计数索引的容差内——`max(1, min(3, ceil(total_count / 100)))`。
 - ✅ 合并后的快照 `id` 不重复；每条记录都带有确切的 `dsh-plugin` 标签；计数类字段为非负整数；条目按 Stars 降序、`full_name` 升序排列。
-- ✅ 发布时的 `meta.total_count` 等于本次运行实际收集并通过校验的仓库数（即"收集时快照"）。脚本仍会在收集前后各测一次根 `total_count` 并记入日志，但**不**把它当作发布门槛：线上 Topic 持续增长，严格的"前后相等"要求永远无法满足；每个分片仍然严格校验，因此任何截断的分片都绝不会发布。
+- ✅ 发布时的 `meta.total_count` 等于本次运行实际收集并通过校验的仓库数（即"收集时快照"）。脚本仍会在收集前后各测一次根 `total_count` 并记入日志，但**不**把它当作发布门槛：线上 Topic 持续增长，严格的"前后相等"要求永远无法满足。
+- ✅ 被容忍的缺口会以 `meta.count_deficit` 发布（GitHub 计数索引报了数、但检索索引始终不返回的仓库）。整个 Topic 通常只有个位数；某个分片一旦缺失超过容差，同步仍然失败。
 - ✅ 快照先序列化到同目录下的临时文件，重新读取、再次校验，**只有**在校验通过后才原子重命名为 `public/plugins.json`。任何失败都会清理临时文件，并保留上次可用的快照。
+
+#### 为什么用容差，而不是严格相等
+
+GitHub Search 的 `total_count` 来自**计数**索引，而结果页来自**检索**索引。两者只是最终一致，而且对同一条文档可能长期不一致——典型场景是仓库在被索引之后被删除、改名、转为私有或被标记：它仍然被计数，却永远取不出来。实测：`topic:dsh-plugin created:2026-09-02T15:14:49Z..2026-09-02T15:14:49Z` 返回 `total_count=1` 但 `items` 为空，且在同一天、整个 Topic、各种排序以及 GraphQL 下都缺同一条文档——无论重试还是按日期 → Stars → 创建时间（精确到秒）重新分片，都无法让它出现。因此 `unique === total_count` 的严格等式根本无法满足，也正是 2026-09-30 起定时同步连续失败的原因。页面重叠（真正的 offset 分页漂移）依然不被容忍：会先重试，仍不稳定就重新分片。
 
 ## 🚀 快速开始
 
@@ -115,7 +120,7 @@ Token **仅**用于同步脚本，绝不会出现在前端代码、`public/plugi
 
 ### 快照结构
 
-`public/plugins.json` 包含 `meta`（schema 版本、Topic、Topic 链接、查询语句、`fetched_at`、`total_count`、`complete`）与 `items` 数组，每个元素对应一个 GitHub 仓库，字段包括：`id`、`name`、`full_name`、`owner`、`owner_avatar_url`、`url`、`homepage`、`description`、`stars`、`forks`、`open_issues`、`language`、`license`（SPDX id 或 `null`）、`topics`、`fork`、`archived` 以及三个时间戳。详见 `src/types.ts`。
+`public/plugins.json` 包含 `meta`（schema 版本、Topic、Topic 链接、查询语句、`fetched_at`、`total_count`、`count_deficit`、`complete`）与 `items` 数组，每个元素对应一个 GitHub 仓库，字段包括：`id`、`name`、`full_name`、`owner`、`owner_avatar_url`、`url`、`homepage`、`description`、`stars`、`forks`、`open_issues`、`language`、`license`（SPDX id 或 `null`）、`topics`、`fork`、`archived` 以及三个时间戳。详见 `src/types.ts`。
 
 ## 🧩 前端模块
 
@@ -176,4 +181,4 @@ VITE_BASE=/my-app/ npm run build
 
 ## 🤝 持续集成
 
-`.github/workflows/ci.yml` 在每次 PR 与 push 时运行离线测试、类型检查与构建；`.github/workflows/sync.yml` 则在每 6 小时的定时任务与手动触发时执行完整数据同步，并使用 `contents: write` 将刷新后的快照提交回 `main`。CI 构建成功后会以 `dsh-plugin-hub-dist` 为名将标准 `dist/` 目录作为构件上传。
+`.github/workflows/ci.yml` 在每次 PR 与 push 时运行离线测试、类型检查与构建；`.github/workflows/sync.yml` 则在每 6 小时的定时任务与手动触发时执行完整数据同步，然后在最新的 `main` 之上重建数据提交并用 `contents: write` 推送（推送被拒会自动重试，整次运行限制在 40 分钟内）。同步失败会开一个跟踪 Issue，下次成功时自动关闭。CI 构建成功后会以 `dsh-plugin-hub-dist` 为名将标准 `dist/` 目录作为构件上传。

@@ -28,6 +28,12 @@ export interface SnapshotMeta {
   query: string;
   fetched_at: string;
   total_count: number;
+  /**
+   * Repositories GitHub's search count index claimed to hold for the queried
+   * shards but never returned from the retrieval index (a stable, unavoidable
+   * inconsistency in GitHub's own index). Absent means no deficit was measured.
+   */
+  count_deficit?: number;
   complete: boolean;
 }
 

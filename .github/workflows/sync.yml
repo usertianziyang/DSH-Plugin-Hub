@@ -7,14 +7,20 @@ on:
 
 permissions:
   contents: write
+  # Only used to open/close the "sync is failing" tracking issue below.
+  issues: write
 
 concurrency:
+  # Never let two syncs overlap; cancel-in-progress would waste a full collection.
   group: dsh-plugin-hub-sync
   cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # A full collection is ~350 throttled requests (12-15 min in practice).
+    # Without a bound a hung run would burn the 6-hour default.
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,5 +39,82 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: npm run sync
 
-      - name: Push data commit
-        run: git push origin HEAD:main
+      - name: Publish data commit
+        env:
+          SNAPSHOT: public/plugins.json
+        run: |
+          set -euo pipefail
+
+          if [ ! -s "$SNAPSHOT" ]; then
+            echo "::error::$SNAPSHOT is missing or empty; refusing to publish."
+            exit 1
+          fi
+
+          # Rebuild the commit on top of the *current* main instead of pushing
+          # the local commit directly. The collection takes ~12 minutes, so main
+          # may have moved (another workflow, a manual push, branch protection),
+          # which would reject a plain `git push HEAD:main` as a non-fast-forward.
+          cp "$SNAPSHOT" "$RUNNER_TEMP/plugins.json"
+
+          for attempt in 1 2 3; do
+            git fetch --quiet origin main
+            git reset --hard --quiet origin/main
+            cp "$RUNNER_TEMP/plugins.json" "$SNAPSHOT"
+            git add "$SNAPSHOT"
+
+            if git diff --cached --quiet; then
+              echo "plugins.json unchanged; nothing to publish."
+              exit 0
+            fi
+
+            git -c user.name="github-actions[bot]" \
+                -c user.email="github-actions[bot]@users.noreply.github.com" \
+                commit --quiet -m "chore(data): refresh plugins.json from GitHub topic sync"
+
+            if git push origin HEAD:main; then
+              echo "Published refreshed plugins.json (attempt $attempt)."
+              exit 0
+            fi
+
+            echo "::warning::push rejected on attempt $attempt; retrying on the latest main."
+            sleep $((attempt * 5))
+          done
+
+          echo "::error::Could not publish the refreshed snapshot after 3 attempts."
+          exit 1
+
+      # A silent red schedule is how the data froze for nine days in 2026-09/10.
+      # Keep exactly one open tracking issue while the workflow is broken.
+      - name: Open a tracking issue on failure
+        if: failure()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Sync plugin data is failing"
+          number=$(gh issue list --state open --limit 100 --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
+          if [ -n "$number" ]; then
+            echo "Tracking issue #$number is already open; not filing another."
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$(printf '%s\n\n%s\n\n%s' \
+            "The scheduled \`Sync plugin data\` workflow failed: $RUN_URL" \
+            "While this issue is open, \`public/plugins.json\` is not refreshing." \
+            "It closes automatically once a sync succeeds again.")"
+
+      - name: Close the tracking issue after a successful sync
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title="Sync plugin data is failing"
+          number=$(gh issue list --state open --limit 100 --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment "A sync completed successfully; data is flowing again."
+          fi

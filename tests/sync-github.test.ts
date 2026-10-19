@@ -10,6 +10,7 @@ import {
   daysBetween,
   dedupeById,
   GitHubSearchClient,
+  maxShardDeficit,
   runSync,
   sortItems,
   splitDateRange,
@@ -358,7 +359,7 @@ test("persistent incomplete_results fails", async () => {
 // Integrity
 // ---------------------------------------------------------------------------
 
-test("shard integrity fails when unique count != total_count", async () => {
+test("overlapping pages with a missing repository still fail", async () => {
   const { client } = makeClient(() => ({
     body: searchBody([makeRepo(1), makeRepo(1), makeRepo(2)], 3),
   }));
@@ -366,6 +367,97 @@ test("shard integrity fails when unique count != total_count", async () => {
     () => collectAllRepos(client, START, END),
     /Integrity check failed/,
   );
+});
+
+test("maxShardDeficit allows one per page and is capped", () => {
+  assert.equal(maxShardDeficit(0), 1);
+  assert.equal(maxShardDeficit(1), 1);
+  assert.equal(maxShardDeficit(100), 1);
+  assert.equal(maxShardDeficit(101), 2);
+  assert.equal(maxShardDeficit(200), 2);
+  assert.equal(maxShardDeficit(201), 3);
+  assert.equal(maxShardDeficit(642), 3);
+  assert.equal(maxShardDeficit(919), 3);
+});
+
+test("a small count-index overshoot without duplicates is accepted and tallied", async () => {
+  const { client, calls } = makeClient(() => ({
+    // GitHub counts three repositories but only ever serves two of them.
+    body: searchBody([makeRepo(1), makeRepo(2)], 3),
+  }));
+
+  const items = await collectAllRepos(client, START, END);
+
+  assert.deepEqual(items.map((i) => i.id).sort((a, b) => a - b), [1, 2]);
+  assert.equal(client.stats.missingRepositories, 1);
+  assert.equal(client.stats.largestDeficit, 1);
+  // No duplicate page entries, so retrying could not help: exactly one pass.
+  assert.equal(calls.length, 1);
+});
+
+test("a count-index overshoot is accepted without re-paginating a large shard", async () => {
+  const repos = Array.from({ length: 918 }, (_, i) => makeRepo(i + 1));
+  const { client, calls } = makeClient((_query, page) => {
+    const startIdx = (page - 1) * 100;
+    return { body: searchBody(repos.slice(startIdx, startIdx + 100), 919) };
+  });
+
+  const items = await collectAllRepos(client, START, END);
+
+  assert.equal(items.length, 918);
+  // ceil(919 / 100) === 10 pages, one request each, no drift retries.
+  assert.equal(calls.length, 10);
+  assert.equal(client.stats.missingRepositories, 1);
+});
+
+test("a deficit beyond the tolerance still fails the sync", async () => {
+  const DAY = "2026-08-17";
+  const { client } = makeClient(() => ({ body: searchBody([], 500) }));
+  await assert.rejects(
+    () => collectAllRepos(client, DAY, DAY),
+    /Integrity check failed .*tolerance/,
+  );
+});
+
+test("unresolved pagination drift re-shards a multi-day window by date", async () => {
+  const split = splitDateRange({ start: START, end: END })!;
+  const { client } = makeClient((query) => {
+    const range = parseRange(query);
+    if (range.start === START && range.end === END) {
+      // Every page overlaps, so the window can never be paginated cleanly.
+      return { body: searchBody([makeRepo(1), makeRepo(1), makeRepo(2)], 3) };
+    }
+    if (range.start === split[0].start && range.end === split[0].end) {
+      return { body: searchBody([makeRepo(1), makeRepo(2)], 2) };
+    }
+    if (range.start === split[1].start && range.end === split[1].end) {
+      return { body: searchBody([makeRepo(3)], 1) };
+    }
+    throw new Error(`unexpected query ${query}`);
+  });
+
+  const items = await collectAllRepos(client, START, END);
+
+  assert.deepEqual(
+    items.map((i) => i.id).sort((a, b) => a - b),
+    [1, 2, 3],
+  );
+});
+
+test("re-shard recoveries are capped per run", async () => {
+  const { client } = makeClient(() => ({
+    // Every page overlaps, for every possible shard.
+    body: searchBody([makeRepo(1), makeRepo(1), makeRepo(2)], 3),
+  }));
+
+  for (let i = 0; i < 25; i += 1) {
+    await assert.rejects(
+      () => collectAllRepos(client, "2026-08-14", "2026-08-17"),
+      /Integrity check failed/,
+    );
+  }
+
+  assert.equal(client.stats.reshardedShards, 20);
 });
 
 test("shard pagination drift retries and succeeds on a stable re-fetch", async () => {
@@ -588,4 +680,30 @@ test("runSync publishes the collection-time snapshot even when before/after coun
   // The published snapshot reflects what was collected, not the changing root.
   assert.equal(snapshot.meta.complete, true);
   assert.equal(snapshot.meta.total_count, snapshot.items.length);
+});
+
+test("runSync publishes the tolerated count deficit as meta.count_deficit", async () => {
+  const { deps } = makeClient((query) => {
+    const range = parseRange(query);
+    if (range.start === START && range.end === END) {
+      // GitHub counts three repositories but only serves two of them.
+      return { body: searchBody([makeRepo(1), makeRepo(2)], 3) };
+    }
+    throw new Error(`unexpected query ${query}`);
+  });
+
+  const snapshot = await runSync(deps);
+
+  assert.equal(snapshot.items.length, 2);
+  assert.equal(snapshot.meta.complete, true);
+  assert.equal(snapshot.meta.count_deficit, 1);
+  assert.equal(validateSnapshot(snapshot).ok, true);
+});
+
+test("validateSnapshot rejects a negative meta.count_deficit", () => {
+  const snapshot = snapshotFromItems([makeItem({ id: 1 })]);
+  snapshot.meta.count_deficit = -1;
+  const result = validateSnapshot(snapshot);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("; "), /count_deficit/);
 });

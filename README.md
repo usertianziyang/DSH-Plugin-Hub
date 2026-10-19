@@ -20,7 +20,7 @@
 - ⚡ **Fully static** — `dist/` is a plain SPA. No server, no API calls from the browser, no tracking.
 - 🔍 **Client-side search & pagination** — NFKC-normalized, case-insensitive, AND-semantics. Searches names, owners, descriptions, languages, licenses, and topics.
 - 🏷️ **Curated categories** — MCP, Web UI, CLI, Desktop, Vision, Memory, Agent, Security, Developer Tools, Editor Integration, Awesome List, plus a unified **All** / **Uncategorized** view.
-- 🛡️ **Statically validated data** — every sync shard is integrity-checked end-to-end; truncated or partial data is never published.
+- 🛡️ **Statically validated data** — every sync shard is integrity-checked end-to-end; truncated or overlapping pages are never published, and the one gap GitHub itself cannot serve is published as `meta.count_deficit` instead of being hidden.
 - ⏰ **Auto-refreshing** — a 6-hour GitHub Actions cron keeps `plugins.json` fresh; Vercel re-deploys on every data commit.
 - ♿ **Responsive & accessible** — sticky header, search, and footer; respects `prefers-color-scheme` and `prefers-reduced-motion`.
 
@@ -67,17 +67,22 @@ GitHub Search returns at most 100 results per page and only the first 1,000 resu
 topic:dsh-plugin created:2008-01-01..<today UTC>
 ```
 
-Any shard whose `total_count` exceeds 1,000 is split at the midpoint of its date range into two adjacent, non-overlapping, gap-free closed ranges. When a range is already a single day but still exceeds 1,000 results (which happens in practice — one day can hold thousands of repos), the sync falls back to a second, orthogonal dimension and bisects by star count (`stars:min..max`). A single star value that still needs more than one page would make `sort=stars` degenerate (every repository ties), so the sync falls back to a third orthogonal dimension and bisects by creation timestamp within the day (down to the second), reducing each shard to a single page and eliminating offset-pagination drift. A single second that still exceeds the page size aborts the sync. Truncated data is **never** published. All shards are merged and de-duplicated by GitHub repository `id`, then re-sorted globally.
+Any shard whose `total_count` exceeds 1,000 is split at the midpoint of its date range into two adjacent, non-overlapping, gap-free closed ranges. When a range is already a single day but still exceeds 1,000 results (which happens in practice — one day can hold thousands of repos), the sync falls back to a second, orthogonal dimension and bisects by star count (`stars:min..max`). A single star value that still needs more than one page would make `sort=stars` degenerate (every repository ties), so the sync falls back to a third orthogonal dimension and bisects by creation timestamp within the day (down to the second), reducing each shard to a single page and eliminating offset-pagination drift. A single second that still exceeds the page size aborts the sync. When a shard cannot be paginated cleanly because pages overlap, the sync re-races it on a narrower dimension instead of failing outright. Truncated data is **never** published. All shards are merged and de-duplicated by GitHub repository `id`, then re-sorted globally.
 
 ### Integrity guarantees
 
 A sync is only "successful" when **every** check passes:
 
 - ✅ Every API response is HTTP-successful and has `incomplete_results === false`.
-- ✅ Every shard has `total_count <= 1000`, fetches exactly `Math.ceil(total_count / 100)` pages, and its de-duplicated count equals its first-page `total_count`.
+- ✅ Every shard with `total_count <= 1000` fetches exactly `Math.ceil(total_count / 100)` pages and never returns overlapping pages. Its de-duplicated count must then land within GitHub's count-index tolerance — `max(1, min(3, ceil(total_count / 100)))` — of its first-page `total_count`.
 - ✅ The merged snapshot has no duplicate `id`, every item carries the exact `dsh-plugin` topic, counts are non-negative integers, and items are sorted by stars desc then `full_name` asc.
-- ✅ The published `meta.total_count` equals the number of repositories actually collected and validated during the run (a "collection-time snapshot"). The root `total_count` is still measured before and after collection and logged, but is **not** used as a publish gate: the live topic grows continuously, so a strict before/after equality requirement would never be satisfiable. Each shard is still strictly integrity-checked, so no truncated shard is ever published.
+- ✅ The published `meta.total_count` equals the number of repositories actually collected and validated during the run (a "collection-time snapshot"). The root `total_count` is still measured before and after collection and logged, but is **not** used as a publish gate: the live topic grows continuously, so a strict before/after equality requirement would never be satisfiable.
+- ✅ The tolerated shortfall is published as `meta.count_deficit` (repositories GitHub's counting index reported but its retrieval index never served). It is normally a handful of repositories across the whole topic; a shard that misses more than the tolerance still fails the sync.
 - ✅ The snapshot is serialized to a temp file in the same directory, re-read, re-validated, and only then atomically renamed over `public/plugins.json`. Any failure cleans up the temp file and leaves the last good snapshot intact.
+
+#### Why a tolerance, and not strict equality
+
+GitHub Search serves `total_count` from a *counting* index and result pages from a *retrieval* index. They are only eventually consistent, and for a single document they can disagree in a stable way — typically a repository that was deleted, renamed, made private or flagged after being indexed: still counted, never retrievable. Measured against the live API: `topic:dsh-plugin created:2026-09-02T15:14:49Z..2026-09-02T15:14:49Z` reports `total_count=1` with zero items, and the same document is missing from the whole-day, whole-topic, alternate-sort and GraphQL variants alike — no amount of retrying or re-sharding (date → stars → creation time, down to one second) makes it retrievable. A strict `unique === total_count` gate is therefore unsatisfiable, and this is exactly what made every scheduled sync fail from 2026-09-30 until the tolerance was introduced. Overlapping pages (the fingerprint of genuine offset-pagination drift) are still never tolerated: they are retried and, failing that, re-sharded.
 
 ## 🚀 Quick Start
 
@@ -115,7 +120,7 @@ Without a token (or before the first sync), the repository ships a valid placeho
 
 ### Snapshot schema
 
-`public/plugins.json` has `meta` (schema version, topic, topic URL, query, `fetched_at`, `total_count`, `complete`) and `items`, where each item maps a GitHub repository to: `id`, `name`, `full_name`, `owner`, `owner_avatar_url`, `url`, `homepage`, `description`, `stars`, `forks`, `open_issues`, `language`, `license` (SPDX id or `null`), `topics`, `fork`, `archived`, and the three timestamps. See `src/types.ts`.
+`public/plugins.json` has `meta` (schema version, topic, topic URL, query, `fetched_at`, `total_count`, `count_deficit`, `complete`) and `items`, where each item maps a GitHub repository to: `id`, `name`, `full_name`, `owner`, `owner_avatar_url`, `url`, `homepage`, `description`, `stars`, `forks`, `open_issues`, `language`, `license` (SPDX id or `null`), `topics`, `fork`, `archived`, and the three timestamps. See `src/types.ts`.
 
 ## 🧩 Frontend
 
@@ -176,4 +181,4 @@ That is all. On the next scheduled (or manually dispatched) sync, the workflow w
 
 ## 🤝 CI
 
-`.github/workflows/ci.yml` runs offline tests, type-check, and build on every pull request and push. `.github/workflows/sync.yml` runs the full data sync on a 6-hour schedule and on manual dispatch, then commits the refreshed snapshot back to `main` with `contents: write`. A successful CI build uploads the standard `dist/` directory as a `dsh-plugin-hub-dist` artifact.
+`.github/workflows/ci.yml` runs offline tests, type-check, and build on every pull request and push. `.github/workflows/sync.yml` runs the full data sync on a 6-hour schedule and on manual dispatch, then rebuilds the data commit on the latest `main` and pushes it with `contents: write` (retrying if the push is rejected, and bounded by a 40-minute timeout). A failing sync opens one tracking issue, which closes automatically on the next successful run. A successful CI build uploads the standard `dist/` directory as a `dsh-plugin-hub-dist` artifact.

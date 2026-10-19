@@ -71,6 +71,24 @@ export interface DateRange {
   end: string;
 }
 
+/**
+ * Per-run collection diagnostics. `missingRepositories` is the part of the
+ * snapshot that GitHub claimed to hold but never returned; it is published in
+ * `meta.count_deficit` so the size of that blind spot stays observable.
+ */
+export interface SyncStats {
+  /** Shards measured during this run. */
+  shards: number;
+  /** Repositories counted by GitHub but never retrievable, summed over shards. */
+  missingRepositories: number;
+  /** Largest single-shard deficit that was tolerated. */
+  largestDeficit: number;
+  /** Shards whose deficit disappeared after a drift re-fetch. */
+  recoveredShards: number;
+  /** Shards recovered by re-sharding into a finer dimension. */
+  reshardedShards: number;
+}
+
 function safeMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
@@ -205,6 +223,12 @@ export function validateSnapshot(snapshot: Snapshot): ValidationResult {
       `meta.total_count (${meta.total_count}) != items.length (${snapshot.items.length})`,
     );
   }
+  if (
+    meta.count_deficit !== undefined &&
+    (!Number.isInteger(meta.count_deficit) || meta.count_deficit < 0)
+  ) {
+    errors.push("meta.count_deficit must be a non-negative integer when present");
+  }
 
   const seenIds = new Set<number>();
   for (const item of snapshot.items) {
@@ -245,6 +269,13 @@ export function validateSnapshot(snapshot: Snapshot): ValidationResult {
 
 export class GitHubSearchClient {
   private lastRequestAt = 0;
+  readonly stats: SyncStats = {
+    shards: 0,
+    missingRepositories: 0,
+    largestDeficit: 0,
+    recoveredShards: 0,
+    reshardedShards: 0,
+  };
 
   constructor(private readonly deps: SyncDeps) {}
 
@@ -413,28 +444,150 @@ function shardLabel(params: ShardParams): string {
 }
 
 /**
- * Fetch every page of a shard and de-duplicate by repository id. The first
- * page is passed in (already requested) and is not re-requested here.
+ * Upper bound on how many repositories a shard may fail to retrieve while still
+ * being published.
+ *
+ * GitHub Search is served by two different indexes: `total_count` comes from a
+ * counting index, while result pages come from a retrieval index. They are only
+ * eventually consistent, and they can disagree in a *stable* way for a single
+ * document — typically a repository that was deleted, renamed, made private or
+ * flagged after it was indexed, so it is still counted but can never be
+ * retrieved.
+ *
+ * Measured against the live API on 2026-10-09 for
+ * `topic:dsh-plugin created:2026-09-02T15:14:49Z..2026-09-02T15:14:49Z`:
+ * `total_count=1`, `items=[]`. The same document is missing from the whole-day,
+ * whole-topic, alternate-sort and GraphQL variants, and no amount of re-sharding
+ * (date → stars → creation time, down to one second) makes it retrievable. A
+ * strict `unique === total_count` gate is therefore unsatisfiable, and it is the
+ * reason the scheduled sync started failing on 2026-09-30.
+ *
+ * A deficit of at most this many repositories per shard is treated as that
+ * inherent limitation: it is logged, tallied in `meta.count_deficit`, and
+ * tolerated. A larger deficit still means real truncation and fails the sync.
+ */
+export const MAX_SHARD_DEFICIT = 3;
+
+/**
+ * Tolerated deficit for a shard: one repository per page of results, capped at
+ * `MAX_SHARD_DEFICIT`.
+ */
+export function maxShardDeficit(total: number): number {
+  return Math.max(1, Math.min(MAX_SHARD_DEFICIT, Math.ceil(total / PER_PAGE)));
+}
+
+/**
+ * Cap on re-shard recoveries per run. Each recovery replays a failing shard on a
+ * finer dimension; without a cap, a systemic failure (e.g. GitHub serving short
+ * pages for everything) would spend the run budget amplifying itself deeper into
+ * the split tree instead of failing fast.
+ */
+const MAX_RESHARD_RECOVERIES = 20;
+
+function claimReshardBudget(client: GitHubSearchClient): boolean {
+  if (client.stats.reshardedShards >= MAX_RESHARD_RECOVERIES) {
+    return false;
+  }
+  client.stats.reshardedShards += 1;
+  return true;
+}
+
+/** One pagination pass over a shard. */
+interface ShardOutcome {
+  items: PluginItem[];
+  /** `total_count` reported by the page-1 response of this pass. */
+  total: number;
+  /** Unique repositories retrieved. */
+  unique: number;
+  /** Raw items retrieved, before de-duplication. */
+  fetched: number;
+}
+
+/** Cross-page duplicates: the fingerprint of offset-pagination drift. */
+function duplicateEntries(outcome: ShardOutcome): number {
+  return outcome.fetched - outcome.unique;
+}
+
+/** Repositories GitHub counted but did not return. Negative means it under-counted. */
+function countDeficit(outcome: ShardOutcome): number {
+  return outcome.total - outcome.unique;
+}
+
+/**
+ * A shard is acceptable when it was paginated exhaustively (we always request
+ * `ceil(total / PER_PAGE)` pages) and nothing that GitHub will serve is missing.
+ *
+ * Coverage is what matters, not page cleanliness:
+ * - A complete result set is accepted even if pages overlapped on the way there.
+ * - A short result set is accepted only when the pages did *not* overlap and the
+ *   shortfall is within the count-index tolerance. Overlapping pages mean
+ *   repositories were pushed out of the window by drift, so another pass (and,
+ *   failing that, a finer dimension) is worth trying.
+ */
+function isShardAcceptable(outcome: ShardOutcome): boolean {
+  const deficit = countDeficit(outcome);
+  if (deficit <= 0) {
+    return true;
+  }
+  if (duplicateEntries(outcome) > 0) {
+    return false;
+  }
+  return deficit <= maxShardDeficit(outcome.total);
+}
+
+/**
+ * Fetch every page of a shard and de-duplicate by repository id. The first page
+ * is passed in (already requested) and is not re-requested here.
  */
 async function fetchShardPages(
   client: GitHubSearchClient,
   params: ShardParams,
   total: number,
   first: SearchResponse,
-): Promise<PluginItem[]> {
-  const pages = Math.ceil(total / PER_PAGE);
+): Promise<{ items: PluginItem[]; fetched: number }> {
+  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   const items: PluginItem[] = first.items.map(mapRepository);
   for (let page = 2; page <= pages; page++) {
     const response = await client.search({ ...params, page });
     items.push(...response.items.map(mapRepository));
   }
-  return dedupeById(items);
+  return { items: dedupeById(items), fetched: items.length };
+}
+
+async function measureShard(
+  client: GitHubSearchClient,
+  params: ShardParams,
+  total: number,
+  first: SearchResponse,
+): Promise<ShardOutcome> {
+  const { items, fetched } = await fetchShardPages(client, params, total, first);
+  return { items, total, unique: items.length, fetched };
+}
+
+/** Accept a shard, recording any tolerated deficit. */
+function acceptShard(
+  client: GitHubSearchClient,
+  params: ShardParams,
+  outcome: ShardOutcome,
+): PluginItem[] {
+  const deficit = countDeficit(outcome);
+  if (deficit > 0) {
+    client.stats.missingRepositories += deficit;
+    client.stats.largestDeficit = Math.max(client.stats.largestDeficit, deficit);
+    client.log(
+      `Shard ${shardLabel(params)}: GitHub counted ${outcome.total} but returned ` +
+        `${outcome.unique} (deficit ${deficit}, tolerance ${maxShardDeficit(outcome.total)}); ` +
+        `accepting the count-index overshoot.`,
+    );
+  }
+  return outcome.items;
 }
 
 /**
- * Signals that a shard's de-duplicated count did not match its total_count after
- * pagination and bounded retries. Callers that have a finer orthogonal dimension
- * (e.g. creation time within a day) may recover by re-sharding instead of failing.
+ * Signals that a shard could not be collected acceptably: either its pages
+ * overlapped (drift) or it missed more repositories than the count-index
+ * tolerance allows. Callers that have a finer orthogonal dimension may recover
+ * by re-sharding instead of failing.
  */
 class ShardIntegrityError extends Error {
   constructor(message: string) {
@@ -444,13 +597,20 @@ class ShardIntegrityError extends Error {
 }
 
 /**
- * Collect a shard and require that its de-duplicated count exactly matches its
- * total_count. GitHub Search's offset pagination can drift when many
- * repositories share the same sort key (e.g. identical star counts) while new
- * repositories are being indexed, producing cross-page duplicates or gaps. We
- * retry the whole shard a bounded number of times; if the count still does not
- * match, we throw a ShardIntegrityError so the caller can either fail or fall
- * back to a finer dimension.
+ * Collect a shard and require that its de-duplicated count is within tolerance
+ * of its `total_count`.
+ *
+ * GitHub Search's offset pagination can drift when many repositories share the
+ * same sort key (identical star counts) while new repositories are being
+ * indexed, so pages overlap and several repositories fall out of the window.
+ * That is recoverable: we re-request the first page (the count may have changed)
+ * and re-paginate, a bounded number of times. If it still does not settle, we
+ * throw a ShardIntegrityError so the caller can fall back to a finer dimension.
+ *
+ * A short result set with *no* overlapping pages is different: it is the count
+ * index over-reporting a document that the retrieval index does not serve.
+ * Retrying cannot fix it (see `MAX_SHARD_DEFICIT`) — within tolerance it is
+ * accepted, beyond tolerance it is still an error.
  */
 async function collectShard(
   client: GitHubSearchClient,
@@ -458,28 +618,32 @@ async function collectShard(
   total: number,
   first: SearchResponse,
 ): Promise<PluginItem[]> {
-  let unique = await fetchShardPages(client, params, total, first);
-  if (unique.length === total) {
-    return unique;
+  client.stats.shards += 1;
+  let outcome = await measureShard(client, params, total, first);
+  if (isShardAcceptable(outcome)) {
+    return acceptShard(client, params, outcome);
   }
 
   for (let attempt = 1; attempt <= SHARD_RETRY_ATTEMPTS; attempt++) {
     client.log(
-      `Shard ${shardLabel(params)}: ${unique.length}/${total} unique after pagination; ` +
+      `Shard ${shardLabel(params)}: ${outcome.unique}/${outcome.total} unique after pagination ` +
+        `(${duplicateEntries(outcome)} duplicate page entries); ` +
         `retrying ${attempt}/${SHARD_RETRY_ATTEMPTS}.`,
     );
     // Re-request the first page too, since the index may have drifted.
     const refirst = await client.search({ ...params, page: 1 });
-    const newTotal = refirst.total_count;
-    unique = await fetchShardPages(client, params, newTotal, refirst);
-    if (unique.length === newTotal) {
-      return unique;
+    outcome = await measureShard(client, params, refirst.total_count, refirst);
+    if (isShardAcceptable(outcome)) {
+      client.stats.recoveredShards += 1;
+      return acceptShard(client, params, outcome);
     }
   }
 
   throw new ShardIntegrityError(
     `Integrity check failed for shard ${shardLabel(params)}: ` +
-      `expected ${total} unique repos, got ${unique.length}.`,
+      `expected ${outcome.total} unique repos, got ${outcome.unique} ` +
+      `(${duplicateEntries(outcome)} duplicate page entries, ` +
+      `tolerance ${maxShardDeficit(outcome.total)}).`,
   );
 }
 
@@ -511,7 +675,42 @@ export async function collectAllRepos(
     return [...leftItems, ...rightItems];
   }
 
-  return await collectShard(client, { start, end }, total, first);
+  try {
+    return await collectShard(client, { start, end }, total, first);
+  } catch (error) {
+    if (!(error instanceof ShardIntegrityError)) {
+      throw error;
+    }
+    if (!claimReshardBudget(client)) {
+      client.log(
+        `Shard ${start}..${end}: re-shard budget exhausted; failing instead of ` +
+          `amplifying the failure.`,
+      );
+      throw error;
+    }
+    // Pagination did not settle for this window. Re-shard it rather than fail
+    // the whole sync: a narrower window is far less likely to overlap.
+    const split = splitDateRange({ start, end });
+    if (split !== null) {
+      client.log(
+        `Shard ${start}..${end}: pagination did not settle; re-sharding by date.`,
+      );
+      const [left, right] = split;
+      const leftItems = await collectAllRepos(client, left.start, left.end);
+      const rightItems = await collectAllRepos(client, right.start, right.end);
+      return [...leftItems, ...rightItems];
+    }
+    // A single day cannot be split any further, so try the stars dimension.
+    // Without a first page there is no star ceiling to split on, so give up.
+    if (first.items.length === 0) {
+      throw error;
+    }
+    const maxStars = first.items[0].stargazers_count;
+    client.log(
+      `Shard ${start}..${end}: pagination did not settle; sharding by stars 0..${maxStars}.`,
+    );
+    return await collectByStarsRange(client, start, end, 0, maxStars);
+  }
 }
 
 /**
@@ -551,6 +750,13 @@ export async function collectByStarsRange(
     return await collectShard(client, params, total, first);
   } catch (error) {
     if (error instanceof ShardIntegrityError) {
+      if (!claimReshardBudget(client)) {
+        client.log(
+          `Shard ${shardLabel(params)}: re-shard budget exhausted; failing instead ` +
+            `of amplifying the failure.`,
+        );
+        throw error;
+      }
       // Pagination still drifted after retries (many repositories share the same
       // star value). This range is within a single day, so fall back to
       // creation-time sharding to eliminate cross-page drift.
@@ -615,16 +821,23 @@ async function collectByCreatedRangeSec(
     return [...leftItems, ...rightItems];
   }
 
-  // A single page holds everything, so there is no cross-page drift.
-  const items = first.items.map(mapRepository);
-  const unique = dedupeById(items);
-  if (unique.length !== total) {
-    throw new Error(
-      `Integrity check failed for shard ${startIso}..${endIso} stars:${minStars}..${maxStars}: ` +
-        `expected ${total} unique repos, got ${unique.length}.`,
+  // A single page holds everything, so there is no cross-page drift; the only
+  // possible gap is the count-index overshoot handled by `collectShard`.
+  try {
+    return await collectShard(
+      client,
+      { start: startIso, end: endIso, stars },
+      total,
+      first,
     );
+  } catch (error) {
+    // This is the deepest fallback dimension, so there is nothing left to try.
+    // Surface it as a plain error to stop callers from re-sharding.
+    if (error instanceof ShardIntegrityError) {
+      throw new Error(error.message);
+    }
+    throw error;
   }
-  return unique;
 }
 
 async function rootTotalCount(
@@ -653,6 +866,13 @@ export async function runSync(deps: SyncDeps): Promise<Snapshot> {
   const collected = await collectAllRepos(client, startDate, endDate);
   const deduped = dedupeById(collected);
   deps.log?.(`Collected ${deduped.length} unique repos (${collected.length} raw).`);
+  deps.log?.(
+    `Shards: ${client.stats.shards}; accepted count deficit: ` +
+      `${client.stats.missingRepositories} repo(s) ` +
+      `(largest ${client.stats.largestDeficit}); ` +
+      `drift-recovered shards: ${client.stats.recoveredShards}; ` +
+      `re-sharded shards: ${client.stats.reshardedShards}.`,
+  );
 
   // 剔除仅蹭热度、缺乏实用价值的仓库（已归档 / fork / 无描述 / 无许可证 /
   // 合集榜单类营销描述），过滤后再排序与计算排行。
@@ -675,8 +895,10 @@ export async function runSync(deps: SyncDeps): Promise<Snapshot> {
   }
 
   // The published total_count reflects the repositories actually collected and
-  // validated during this run (the "collection-time snapshot"). Each shard is
-  // still strictly integrity-checked, so no truncated shard is ever published.
+  // validated during this run (the "collection-time snapshot"). Every shard is
+  // still integrity-checked; the only tolerated gap is GitHub's count index
+  // over-reporting documents its retrieval index cannot serve, and its size is
+  // published as `count_deficit` instead of being hidden.
   const snapshot: Snapshot = {
     meta: {
       schema_version: 1,
@@ -686,6 +908,7 @@ export async function runSync(deps: SyncDeps): Promise<Snapshot> {
       query: `topic:${TOPIC}`,
       fetched_at: deps.now().toISOString(),
       total_count: sorted.length,
+      count_deficit: client.stats.missingRepositories,
       complete: false,
     },
     items: sorted,
@@ -732,47 +955,20 @@ export async function writeSnapshotAtomic(
 }
 
 // ---------------------------------------------------------------------------
-// Publication: commit the snapshot and (optionally) trigger a Vercel deploy.
+// Publication.
 //
 // This project is a static site hosted on Vercel. Vercel's build filesystem is
 // read-only and its serverless functions are too short-lived for the recursive
 // sharded sync, so the sync itself always runs in GitHub Actions (a long-running
-// environment with `GITHUB_TOKEN`). After a successful sync, this step commits
-// the refreshed `public/plugins.json` back to the repository. The connected
-// Vercel project redeploys automatically from that push.
+// environment with `GITHUB_TOKEN`).
+//
+// This script only writes the refreshed `public/plugins.json`. Committing and
+// pushing are left to `.github/workflows/sync.yml`, which rebuilds the commit on
+// top of the current `main` right before pushing. Keeping git out of the sync
+// step means a git hiccup can never discard an otherwise successful collection,
+// and it removes the risk of a non-fast-forward rejection on the default branch.
+// The push triggers the connected Vercel project to redeploy.
 // ---------------------------------------------------------------------------
-
-/** Report (via git) whether the snapshot actually changed on disk. */
-async function hasUncommittedChange(outputPath: string): Promise<boolean> {
-  const execFile = await import("node:child_process").then((m) => m.execFile);
-  return new Promise<boolean>((resolve) => {
-    execFile("git", ["status", "--porcelain", "--", outputPath], (error, stdout) => {
-      if (error) {
-        // git is unavailable (e.g. a non-CI checkout); assume a change to be safe.
-        resolve(true);
-        return;
-      }
-      resolve(stdout.trim().length > 0);
-    });
-  });
-}
-
-/** Stage and commit the refreshed snapshot using the Actions bot identity. */
-async function commitSnapshot(outputPath: string): Promise<void> {
-  const { execFile } = await import("node:child_process");
-  const run = (args: string[]): Promise<void> =>
-    new Promise((resolve, reject) => {
-      execFile("git", args, (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
-    });
-
-  await run(["config", "user.name", "github-actions[bot]"]);
-  await run(["config", "user.email", "github-actions[bot]@users.noreply.github.com"]);
-  await run(["add", outputPath]);
-  await run(["commit", "-m", "chore(data): refresh plugins.json from GitHub topic sync"]);
-}
 
 // ---------------------------------------------------------------------------
 // Entry point (guarded so tests can import pure functions without syncing).
@@ -801,17 +997,7 @@ async function main(): Promise<void> {
     await writeSnapshotAtomic(outputPath, snapshot);
     const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
     console.log(`[sync] Done: ${snapshot.items.length} repos in ${elapsedSec}s -> ${outputPath}`);
-
-    // Publish only when running in CI (GitHub Actions), where git and the
-    // Actions bot identity are available. Local runs just refresh the file.
-    if (process.env.CI === "true" && process.env.GITHUB_ACTIONS === "true") {
-      if (await hasUncommittedChange(outputPath)) {
-        await commitSnapshot(outputPath);
-        console.log("[sync] Committed refreshed plugins.json.");
-      } else {
-        console.log("[sync] plugins.json unchanged; nothing to commit.");
-      }
-    }
+    // Committing and pushing is the workflow's job (see the Publication note).
   } catch (error) {
     console.error(`[sync] FAILED: ${safeMessage(error)}`);
     process.exitCode = 1;
